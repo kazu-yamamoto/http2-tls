@@ -22,6 +22,9 @@ library
         Network.HTTP2.TLS.Client
 
     other-modules:
+        Network.HTTP2.TLS.Config
+        Network.HTTP2.TLS.IO
+        Network.HTTP2.TLS.Supported
 
     default-language:   Haskell2010
     default-extensions: Strict StrictData
