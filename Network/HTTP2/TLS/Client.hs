@@ -4,6 +4,7 @@ module Network.HTTP2.TLS.Client (
     run,
     runH2C,
     Client,
+
     -- * Low level
     getTLSParams,
     recvTLS,
@@ -63,8 +64,8 @@ run'
     -> Client a
     -> IO a
 run' schm serverName send recv client =
-        E.bracket (allocConfig 4096 send recv) freeConfig $ \conf ->
-            H2Client.run cliconf conf client
+    E.bracket (allocConfig 4096 send recv) freeConfig $ \conf ->
+        H2Client.run cliconf conf client
   where
     cliconf =
         ClientConfig
@@ -152,7 +153,7 @@ recvTLS ctx = E.handle onEOF $ recvData ctx
         | otherwise = E.throwIO e
 
 allocConfig :: Int -> (ByteString -> IO ()) -> IO ByteString -> IO Config
-allocConfig sendbufsiz send recv  = do
+allocConfig sendbufsiz send recv = do
     buf <- mallocBytes sendbufsiz
     timmgr <- T.initialize $ 30 * 1000000
     recvN <- makeRecvN "" recv
