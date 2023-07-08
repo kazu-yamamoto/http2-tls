@@ -2,6 +2,7 @@
 
 module Network.HTTP2.TLS.Client (
     run,
+    runH2C,
     Client,
     -- * Low level
     getTLSParams,
@@ -10,6 +11,7 @@ module Network.HTTP2.TLS.Client (
     sendManyTLS,
 ) where
 
+import Control.Monad (void)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Lazy as LBS
@@ -24,6 +26,7 @@ import Network.HTTP2.Client (
 import qualified Network.HTTP2.Client as H2Client
 import Network.Socket
 import Network.Socket.BufferPool
+import qualified Network.Socket.ByteString as NSB
 import Network.TLS hiding (HostName)
 import Network.TLS.Extra
 import System.IO.Error (isEOFError)
@@ -36,14 +39,36 @@ run :: HostName -> PortNumber -> Client a -> IO a
 run serverName port client = E.bracket open close $ \sock ->
     E.bracket (contextNew sock params) bye $ \ctx -> do
         handshake ctx
-        E.bracket (allocConfig ctx 4096) freeConfig $ \conf ->
-            H2Client.run cliconf conf client
+        let send = sendTLS ctx
+            recv = recvTLS ctx
+        run' "https" serverName send recv client
   where
     open = openTCP serverName port
     params = getTLSParams serverName "h2" False
+
+runH2C :: HostName -> PortNumber -> Client a -> IO a
+runH2C serverName port client = E.bracket open close $ \sock -> do
+    pool <- newBufferPool 2048 16384
+    let send = void . NSB.send sock
+        recv = receive sock pool
+    run' "http" serverName send recv client
+  where
+    open = openTCP serverName port
+
+run'
+    :: ByteString
+    -> String
+    -> (ByteString -> IO ())
+    -> IO ByteString
+    -> Client a
+    -> IO a
+run' schm serverName send recv client =
+        E.bracket (allocConfig 4096 send recv) freeConfig $ \conf ->
+            H2Client.run cliconf conf client
+  where
     cliconf =
         ClientConfig
-            { scheme = "https"
+            { scheme = schm
             , authority = C8.pack serverName
             , cacheLimit = 20
             }
@@ -126,16 +151,16 @@ recvTLS ctx = E.handle onEOF $ recvData ctx
         | Just ioe <- E.fromException e, isEOFError ioe = return ""
         | otherwise = E.throwIO e
 
-allocConfig :: Context -> Int -> IO Config
-allocConfig ctx bufsiz = do
-    buf <- mallocBytes bufsiz
+allocConfig :: Int -> (ByteString -> IO ()) -> IO ByteString -> IO Config
+allocConfig sendbufsiz send recv  = do
+    buf <- mallocBytes sendbufsiz
     timmgr <- T.initialize $ 30 * 1000000
-    recvN <- makeRecvN "" $ recvTLS ctx
+    recvN <- makeRecvN "" recv
     let config =
             Config
                 { confWriteBuffer = buf
-                , confBufferSize = bufsiz
-                , confSendAll = sendTLS ctx
+                , confBufferSize = sendbufsiz
+                , confSendAll = send
                 , confReadN = recvN
                 , confPositionReadMaker = defaultPositionReadMaker
                 , confTimeoutManager = timmgr
