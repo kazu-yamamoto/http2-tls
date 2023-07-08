@@ -5,8 +5,8 @@ module Network.HTTP2.TLS.Client (
     Client,
     -- * Low level
     getTLSParams,
-    sendTLS,
     recvTLS,
+    sendTLS,
     sendManyTLS,
 ) where
 
@@ -32,14 +32,14 @@ import qualified UnliftIO.Exception as E
 
 ----------------------------------------------------------------
 
-run :: HostName -> Client a -> IO a
-run serverName client = E.bracket open close $ \sock ->
+run :: HostName -> PortNumber -> Client a -> IO a
+run serverName port client = E.bracket open close $ \sock ->
     E.bracket (contextNew sock params) bye $ \ctx -> do
         handshake ctx
         E.bracket (allocConfig ctx 4096) freeConfig $ \conf ->
             H2Client.run cliconf conf client
   where
-    open = undefined
+    open = openTCP serverName port
     params = getTLSParams serverName "h2" False
     cliconf =
         ClientConfig
@@ -47,6 +47,23 @@ run serverName client = E.bracket open close $ \sock ->
             , authority = C8.pack serverName
             , cacheLimit = 20
             }
+
+openTCP :: HostName -> PortNumber -> IO Socket
+openTCP h p = do
+    ai <- makeAddrInfo h p
+    sock <- openSocket ai
+    connect sock $ addrAddress ai
+    return sock
+
+makeAddrInfo :: HostName -> PortNumber -> IO AddrInfo
+makeAddrInfo nh p = do
+    let hints =
+            defaultHints
+                { addrFlags = [AI_ADDRCONFIG, AI_NUMERICHOST, AI_NUMERICSERV]
+                , addrSocketType = Stream
+                }
+    let np = show p
+    head <$> getAddrInfo (Just hints) (Just nh) (Just np)
 
 ----------------------------------------------------------------
 
