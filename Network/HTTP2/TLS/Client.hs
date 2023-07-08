@@ -1,6 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Network.HTTP2.TLS.Client (run) where
+module Network.HTTP2.TLS.Client (
+    run,
+    Client,
+    -- * Low level
+    getTLSParams,
+    sendTLS,
+    recvTLS,
+    sendManyTLS,
+) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as C8
@@ -24,24 +32,31 @@ import qualified UnliftIO.Exception as E
 
 ----------------------------------------------------------------
 
-type ALPN = ByteString
-
-----------------------------------------------------------------
-
-run :: ClientConfig -> Client a -> IO a
-run cliconf client = E.bracket open close $ \sock ->
+run :: HostName -> Client a -> IO a
+run serverName client = E.bracket open close $ \sock ->
     E.bracket (contextNew sock params) bye $ \ctx -> do
         handshake ctx
         E.bracket (allocConfig ctx 4096) freeConfig $ \conf ->
             H2Client.run cliconf conf client
   where
     open = undefined
-    serverName = C8.unpack $ authority cliconf
     params = getTLSParams serverName "h2" False
+    cliconf =
+        ClientConfig
+            { scheme = "https"
+            , authority = C8.pack serverName
+            , cacheLimit = 20
+            }
 
 ----------------------------------------------------------------
 
-getTLSParams :: HostName -> ALPN -> Bool -> ClientParams
+getTLSParams
+    :: HostName
+    -> ByteString
+    -- ^ ALPN
+    -> Bool
+    -- ^ Checking server certificates
+    -> ClientParams
 getTLSParams serverName alpn validate =
     (defaultParamsClient serverName "")
         { clientSupported = supported
@@ -81,6 +96,9 @@ getTLSParams serverName alpn validate =
 
 sendTLS :: Context -> ByteString -> IO ()
 sendTLS ctx = sendData ctx . LBS.fromStrict
+
+sendManyTLS :: Context -> [ByteString] -> IO ()
+sendManyTLS ctx = sendData ctx . LBS.fromChunks
 
 -- TLS version of recv (decrypting) without a cache.
 recvTLS :: Context -> IO ByteString
