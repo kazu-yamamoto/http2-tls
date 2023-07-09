@@ -11,7 +11,6 @@ import Network.HTTP2.Client (
 import Network.Socket.BufferPool
 import qualified System.TimeManager as T
 
-
 allocConfig :: Int -> (ByteString -> IO ()) -> IO ByteString -> IO Config
 allocConfig sendbufsiz send recv = do
     buf <- mallocBytes sendbufsiz

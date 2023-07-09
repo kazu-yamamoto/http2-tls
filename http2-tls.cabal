@@ -20,6 +20,7 @@ source-repository head
 library
     exposed-modules:
         Network.HTTP2.TLS.Client
+        Network.HTTP2.TLS.Server
 
     other-modules:
         Network.HTTP2.TLS.Config
@@ -35,6 +36,7 @@ library
         data-default-class,
         http2,
         network,
+        network-run,
         recv,
         time-manager,
         tls,
