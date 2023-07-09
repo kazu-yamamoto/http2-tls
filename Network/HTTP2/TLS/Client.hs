@@ -8,10 +8,7 @@ module Network.HTTP2.TLS.Client (
     PortNumber,
 
     -- * Low level
-    getTLSParams,
-    recvTLS,
-    sendTLS,
-    sendManyTLS,
+    getClientParams,
 ) where
 
 import Control.Monad (void)
@@ -44,7 +41,7 @@ run serverName port client = E.bracket open close $ \sock ->
         run' "https" serverName send recv client
   where
     open = openTCP serverName port
-    params = getTLSParams serverName "h2" False
+    params = getClientParams serverName "h2" False
 
 runH2C :: HostName -> PortNumber -> Client a -> IO a
 runH2C serverName port client = E.bracket open close $ \sock -> do
@@ -92,14 +89,14 @@ makeAddrInfo nh p = do
 
 ----------------------------------------------------------------
 
-getTLSParams
+getClientParams
     :: HostName
     -> ByteString
     -- ^ ALPN
     -> Bool
     -- ^ Checking server certificates
     -> ClientParams
-getTLSParams serverName alpn validate =
+getClientParams serverName alpn validate =
     (defaultParamsClient serverName "")
         { clientSupported = supported
         , clientWantSessionResume = Nothing
