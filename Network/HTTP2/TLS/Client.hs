@@ -4,6 +4,8 @@ module Network.HTTP2.TLS.Client (
     run,
     runH2C,
     Client,
+    HostName,
+    PortNumber,
 
     -- * Low level
     getTLSParams,

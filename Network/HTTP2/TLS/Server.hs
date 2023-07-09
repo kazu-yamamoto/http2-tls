@@ -1,4 +1,9 @@
-module Network.HTTP2.TLS.Server where
+module Network.HTTP2.TLS.Server (
+    runH2C,
+    Server,
+    HostName,
+    PortNumber,
+) where
 
 import Control.Monad (void)
 import Data.ByteString.Char8 ()
