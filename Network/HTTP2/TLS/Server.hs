@@ -82,4 +82,4 @@ getServerParams creds =
 alpn :: [ByteString] -> IO ByteString
 alpn xs
     | "h2" `elem` xs = return "h2"
-    | otherwise = return "" -- fixme
+    | otherwise = return ""
