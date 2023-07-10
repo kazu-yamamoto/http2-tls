@@ -26,20 +26,23 @@ import qualified UnliftIO.Exception as E
 
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
+import Network.HTTP2.TLS.Settings
 import Network.HTTP2.TLS.Supported
 
 runTLS
-    :: Credentials
+    :: Settings
+    -> Credentials
     -> HostName
     -> PortNumber
     -> ByteString
     -- ^ ALPN
     -> (T.Manager -> IOBackend -> IO a)
     -> IO a
-runTLS creds host port alpn action = T.withManager 30000000 $ \mgr ->
+runTLS settings@Settings{..} creds host port alpn action =
+    T.withManager (settingsTimeout * 1000000) $ \mgr ->
     runTCPServer (Just host) (show port) $ \sock -> do
         th <- T.registerKillThread mgr $ return ()
-        backend <- mkBackend sock
+        backend <- mkBackend settings sock
         E.bracket (contextNew backend params) bye $ \ctx -> do
             handshake ctx
             let iobackend = timeoutIOBackend th 50 $ tlsIOBackend ctx
@@ -47,21 +50,23 @@ runTLS creds host port alpn action = T.withManager 30000000 $ \mgr ->
   where
     params = getServerParams creds alpn
 
-run :: Credentials -> HostName -> PortNumber -> Server -> IO ()
-run creds host port server = runTLS creds host port "h2" $ run' server
+run :: Settings -> Credentials -> HostName -> PortNumber -> Server -> IO ()
+run settings creds host port server =
+    runTLS settings creds host port "h2" $ run' settings server
 
-runH2C :: HostName -> PortNumber -> Server -> IO ()
-runH2C host port server = T.withManager 30000000 $ \mgr ->
+runH2C :: Settings -> HostName -> PortNumber -> Server -> IO ()
+runH2C settings@Settings{..} host port server =
+    T.withManager (settingsTimeout * 1000000) $ \mgr ->
     runTCPServer (Just host) (show port) $ \sock -> do
         th <- T.registerKillThread mgr $ return ()
-        iobackend0 <- tcpIOBackend sock
+        iobackend0 <- tcpIOBackend settings sock
         let iobackend = timeoutIOBackend th 50 iobackend0
-        run' server mgr iobackend
+        run' settings server mgr iobackend
 
-run' :: Server -> T.Manager -> IOBackend -> IO ()
-run' server mgr IOBackend{..} =
+run' :: Settings -> Server -> T.Manager -> IOBackend -> IO ()
+run' settings server mgr IOBackend{..} =
     E.bracket
-        (allocConfig mgr 4096 send recv)
+        (allocConfig settings mgr send recv)
         freeConfig
         (\conf -> H2Server.run conf server)
 

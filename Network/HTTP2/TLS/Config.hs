@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Network.HTTP2.TLS.Config where
 
@@ -11,15 +12,17 @@ import Network.HTTP2.Client (
 import Network.Socket.BufferPool
 import qualified System.TimeManager as T
 
+import Network.HTTP2.TLS.Settings
+
 allocConfig
-    :: T.Manager -> Int -> (ByteString -> IO ()) -> IO ByteString -> IO Config
-allocConfig mgr sendbufsiz send recv = do
-    buf <- mallocBytes sendbufsiz
+    :: Settings -> T.Manager -> (ByteString -> IO ()) -> IO ByteString -> IO Config
+allocConfig Settings{..} mgr send recv = do
+    buf <- mallocBytes settingsSendBufferSize
     recvN <- makeRecvN "" recv
     let config =
             Config
                 { confWriteBuffer = buf
-                , confBufferSize = sendbufsiz
+                , confBufferSize = settingsSendBufferSize
                 , confSendAll = send
                 , confReadN = recvN
                 , confPositionReadMaker = defaultPositionReadMaker

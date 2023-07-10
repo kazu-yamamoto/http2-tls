@@ -26,53 +26,58 @@ import qualified UnliftIO.Exception as E
 
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
+import Network.HTTP2.TLS.Settings
 import Network.HTTP2.TLS.Supported
 
 ----------------------------------------------------------------
 
 runTLS
-    :: HostName
+    :: Settings
+    -> HostName
     -> PortNumber
     -> ByteString
     -- ^ ALPN
     -> (T.Manager -> IOBackend -> IO a)
     -> IO a
-runTLS serverName port alpn action = T.withManager 30000000 $ \mgr ->
-    E.bracket open close $ \sock -> do
-        th <- T.registerKillThread mgr $ return ()
-        backend <- mkBackend sock
-        E.bracket (contextNew backend params) bye $ \ctx -> do
-            handshake ctx
-            let iobackend = timeoutIOBackend th 50 $ tlsIOBackend ctx
-            action mgr iobackend
+runTLS settings@Settings{..} serverName port alpn action =
+    T.withManager (settingsTimeout * 1000000) $ \mgr ->
+        E.bracket open close $ \sock -> do
+            th <- T.registerKillThread mgr $ return ()
+            backend <- mkBackend settings sock
+            E.bracket (contextNew backend params) bye $ \ctx -> do
+                handshake ctx
+                let iobackend = timeoutIOBackend th settingsSlowlorisSize $ tlsIOBackend ctx
+                action mgr iobackend
   where
     open = openTCP serverName port
     params = getClientParams serverName alpn False
 
-run :: HostName -> PortNumber -> Client a -> IO a
-run serverName port client =
-    runTLS serverName port "h2" $ run' "https" serverName client
+run :: Settings -> HostName -> PortNumber -> Client a -> IO a
+run settings serverName port client =
+    runTLS settings serverName port "h2" $ run' settings "https" serverName client
 
-runH2C :: HostName -> PortNumber -> Client a -> IO a
-runH2C serverName port client = T.withManager 30000000 $ \mgr ->
-    E.bracket open close $ \sock -> do
-        th <- T.registerKillThread mgr $ return ()
-        iobackend0 <- tcpIOBackend sock
-        let iobackend = timeoutIOBackend th 50 iobackend0
-        run' "http" serverName client mgr iobackend
+runH2C :: Settings -> HostName -> PortNumber -> Client a -> IO a
+runH2C settings@Settings{..} serverName port client =
+    T.withManager (settingsTimeout * 1000000) $ \mgr ->
+        E.bracket open close $ \sock -> do
+            th <- T.registerKillThread mgr $ return ()
+            iobackend0 <- tcpIOBackend settings sock
+            let iobackend = timeoutIOBackend th settingsSlowlorisSize iobackend0
+            run' settings "http" serverName client mgr iobackend
   where
     open = openTCP serverName port
 
 run'
-    :: ByteString
+    :: Settings
+    -> ByteString
     -> HostName
     -> Client a
     -> T.Manager
     -> IOBackend
     -> IO a
-run' schm serverName client mgr IOBackend{..} =
+run' settings schm serverName client mgr IOBackend{..} =
     E.bracket
-        (allocConfig mgr 4096 send recv)
+        (allocConfig settings mgr send recv)
         freeConfig
         (\conf -> H2Client.run cliconf conf client)
   where

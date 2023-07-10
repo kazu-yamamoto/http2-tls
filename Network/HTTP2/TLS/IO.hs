@@ -15,14 +15,18 @@ import System.IO.Error (isEOFError)
 import qualified System.TimeManager as T
 import qualified UnliftIO.Exception as E
 
+import Network.HTTP2.TLS.Settings
+
+----------------------------------------------------------------
+
 -- HTTP2: confReadN == recvTLS
 -- TLS:   recvData  == contextRecv == backendRecv
 
 ----------------------------------------------------------------
 
-mkRecvTCP :: Socket -> IO (IO ByteString)
-mkRecvTCP sock = do
-    pool <- newBufferPool 2048 16384
+mkRecvTCP :: Settings -> Socket -> IO (IO ByteString)
+mkRecvTCP Settings{..} sock = do
+    pool <- newBufferPool settingReadBufferLowerLimit settingReadBufferSize
     return $ receive sock pool
 
 sendTCP :: Socket -> ByteString -> IO ()
@@ -55,9 +59,9 @@ tlsIOBackend ctx =
         , recv = recvTLS ctx
         }
 
-tcpIOBackend :: Socket -> IO IOBackend
-tcpIOBackend sock = do
-    recv' <- mkRecvTCP sock
+tcpIOBackend :: Settings -> Socket -> IO IOBackend
+tcpIOBackend settings sock = do
+    recv' <- mkRecvTCP settings sock
     return $
         IOBackend
             { send = void . NSB.send sock
@@ -84,10 +88,10 @@ recvTLS ctx = E.handle onEOF $ recvData ctx
 
 ----------------------------------------------------------------
 
-mkBackend :: Socket -> IO Backend
-mkBackend sock = do
+mkBackend :: Settings -> Socket -> IO Backend
+mkBackend settings sock = do
     let send' = sendTCP sock
-    recv' <- mkRecvTCP sock
+    recv' <- mkRecvTCP settings sock
     recvN <- makeRecvN "" recv'
     return
         Backend
