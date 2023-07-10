@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Network.HTTP2.TLS.Client (
     run,
@@ -6,9 +7,8 @@ module Network.HTTP2.TLS.Client (
     Client,
     HostName,
     PortNumber,
-
-    -- * Low level
-    getClientParams,
+    runTLS,
+    IOBackend(..),
 ) where
 
 import Data.ByteString (ByteString)
@@ -30,33 +30,40 @@ import Network.HTTP2.TLS.Supported
 ----------------------------------------------------------------
 
 run :: HostName -> PortNumber -> Client a -> IO a
-run serverName port client = E.bracket open close $ \sock -> do
+run serverName port client =
+    runTLS serverName port "h2" $ run' "https" serverName client
+
+runTLS
+    :: HostName
+    -> PortNumber
+    -> ByteString
+    -- ^ ALPN
+    -> (IOBackend -> IO a)
+    -> IO a
+runTLS serverName port alpn action = E.bracket open close $ \sock -> do
     backend <- mkBackend sock
     E.bracket (contextNew backend params) bye $ \ctx -> do
         handshake ctx
-        let send = sendTLS ctx
-            recv = recvTLS ctx
-        run' "https" serverName send recv client
+        action $ IOBackend (sendTLS ctx) (sendManyTLS ctx) (recvTLS ctx)
   where
     open = openTCP serverName port
-    params = getClientParams serverName "h2" False
+    params = getClientParams serverName alpn False
 
 runH2C :: HostName -> PortNumber -> Client a -> IO a
 runH2C serverName port client = E.bracket open close $ \sock -> do
     let send = sendTCP sock
     recv <- mkRecvTCP sock
-    run' "http" serverName send recv client
+    run' "http" serverName client $ IOBackend send (\_ -> return ()) recv
   where
     open = openTCP serverName port
 
 run'
     :: ByteString
-    -> String
-    -> (ByteString -> IO ())
-    -> IO ByteString
+    -> HostName
     -> Client a
+    -> IOBackend
     -> IO a
-run' schm serverName send recv client =
+run' schm serverName client IOBackend{..} =
     E.bracket (allocConfig 4096 send recv) freeConfig $ \conf ->
         H2Client.run cliconf conf client
   where

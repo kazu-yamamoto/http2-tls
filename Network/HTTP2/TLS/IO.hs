@@ -26,6 +26,13 @@ sendTCP sock = NSB.sendAll sock
 
 ----------------------------------------------------------------
 
+data IOBackend =
+    IOBackend {
+      send :: ByteString -> IO ()
+    , sendMany :: [ByteString] -> IO ()
+    , recv :: IO ByteString
+    }
+
 sendTLS :: Context -> ByteString -> IO ()
 sendTLS ctx = sendData ctx . LBS.fromStrict
 
@@ -45,12 +52,12 @@ recvTLS ctx = E.handle onEOF $ recvData ctx
 
 mkBackend :: Socket -> IO Backend
 mkBackend sock = do
-    let send = sendTCP sock
-    recv <- mkRecvTCP sock
-    recvN <- makeRecvN "" recv
+    let send' = sendTCP sock
+    recv' <- mkRecvTCP sock
+    recvN <- makeRecvN "" recv'
     return Backend
         { backendFlush = return ()
         , backendClose = gracefulClose sock 5000 `E.catch` \(E.SomeException _) -> return ()
-        , backendSend  = send
+        , backendSend  = send'
         , backendRecv  = recvN
         }

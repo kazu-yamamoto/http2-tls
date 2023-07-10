@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Network.HTTP2.TLS.Server (
     run,
@@ -6,9 +7,8 @@ module Network.HTTP2.TLS.Server (
     Server,
     HostName,
     PortNumber,
-
-    -- * Low level
-    getServerParams,
+    runTLS,
+    IOBackend(..),
 ) where
 
 import Control.Monad (void)
@@ -31,16 +31,24 @@ import Network.HTTP2.TLS.IO
 import Network.HTTP2.TLS.Supported
 
 run :: Credentials -> HostName -> PortNumber -> Server -> IO ()
-run creds host port server = do
+run creds host port server = runTLS creds host port "h2" $ run' server
+
+runTLS
+    :: Credentials
+    -> HostName
+    -> PortNumber
+    -> ByteString
+    -- ^ ALPN
+    -> (IOBackend -> IO a)
+    -> IO a
+runTLS creds host port alpn action  = do
     runTCPServer (Just host) (show port) $ \sock -> do
         backend <- mkBackend sock
         E.bracket (contextNew backend params) bye $ \ctx -> do
             handshake ctx
-            let send = sendTLS ctx
-                recv = recvTLS ctx
-            run' send recv server
+            action $ IOBackend (sendTLS ctx) (sendManyTLS ctx) (recvTLS ctx)
   where
-    params = getServerParams creds
+    params = getServerParams creds alpn
 
 runH2C :: HostName -> PortNumber -> Server -> IO ()
 runH2C host port server = do
@@ -48,10 +56,10 @@ runH2C host port server = do
         pool <- newBufferPool 2048 16384
         let send = void . NSB.send sock
             recv = receive sock pool
-        run' send recv server
+        run' server $ IOBackend send (\_ -> return ()) recv
 
-run' :: (ByteString -> IO ()) -> IO ByteString -> Server -> IO ()
-run' send recv server =
+run' :: Server -> IOBackend -> IO ()
+run' server IOBackend{..} =
     E.bracket
         (allocConfig 4096 send recv)
         freeConfig
@@ -61,8 +69,9 @@ run' send recv server =
 
 getServerParams
     :: Credentials
+    -> ByteString
     -> ServerParams
-getServerParams creds =
+getServerParams creds alpn =
     def
         { serverSupported = supported
         , serverShared = shared
@@ -77,10 +86,10 @@ getServerParams creds =
     supported = strongSupported
     hooks =
         def
-            { onALPNClientSuggest = Just alpn
+            { onALPNClientSuggest = Just $ selectALPN alpn
             }
 
-alpn :: [ByteString] -> IO ByteString
-alpn xs
-    | "h2" `elem` xs = return "h2"
+selectALPN :: ByteString -> [ByteString] -> IO ByteString
+selectALPN key xs
+    | key `elem` xs = return key
     | otherwise = return ""
