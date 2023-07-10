@@ -40,13 +40,13 @@ runTLS
     -> IO a
 runTLS settings@Settings{..} creds host port alpn action =
     T.withManager (settingsTimeout * 1000000) $ \mgr ->
-    runTCPServer (Just host) (show port) $ \sock -> do
-        th <- T.registerKillThread mgr $ return ()
-        backend <- mkBackend settings sock
-        E.bracket (contextNew backend params) bye $ \ctx -> do
-            handshake ctx
-            let iobackend = timeoutIOBackend th 50 $ tlsIOBackend ctx
-            action mgr iobackend
+        runTCPServer (Just host) (show port) $ \sock -> do
+            th <- T.registerKillThread mgr $ return ()
+            backend <- mkBackend settings sock
+            E.bracket (contextNew backend params) bye $ \ctx -> do
+                handshake ctx
+                let iobackend = timeoutIOBackend th 50 $ tlsIOBackend ctx
+                action mgr iobackend
   where
     params = getServerParams creds alpn
 
@@ -57,11 +57,11 @@ run settings creds host port server =
 runH2C :: Settings -> HostName -> PortNumber -> Server -> IO ()
 runH2C settings@Settings{..} host port server =
     T.withManager (settingsTimeout * 1000000) $ \mgr ->
-    runTCPServer (Just host) (show port) $ \sock -> do
-        th <- T.registerKillThread mgr $ return ()
-        iobackend0 <- tcpIOBackend settings sock
-        let iobackend = timeoutIOBackend th 50 iobackend0
-        run' settings server mgr iobackend
+        runTCPServer (Just host) (show port) $ \sock -> do
+            th <- T.registerKillThread mgr $ return ()
+            iobackend0 <- tcpIOBackend settings sock
+            let iobackend = timeoutIOBackend th 50 iobackend0
+            run' settings server mgr iobackend
 
 run' :: Settings -> Server -> T.Manager -> IOBackend -> IO ()
 run' settings server mgr IOBackend{..} =
