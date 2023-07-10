@@ -2,13 +2,28 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Network.HTTP2.TLS.Server (
+    -- * Runners
     run,
     runH2C,
     Server,
     HostName,
     PortNumber,
     runTLS,
-    IOBackend (..),
+
+    -- * Settings
+    Settings,
+    defaultSettings,
+    settingsTimeout,
+    settingsSendBufferSize,
+    settingsSlowlorisSize,
+    settingReadBufferSize,
+    settingReadBufferLowerLimit,
+
+    -- * IO backend
+    IOBackend,
+    send,
+    sendMany,
+    recv,
 ) where
 
 import Data.ByteString (ByteString)
