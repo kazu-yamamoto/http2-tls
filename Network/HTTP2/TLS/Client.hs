@@ -11,7 +11,6 @@ module Network.HTTP2.TLS.Client (
     getClientParams,
 ) where
 
-import Control.Monad (void)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as C8
 import Data.Default.Class (def)
@@ -21,8 +20,6 @@ import Network.HTTP2.Client (
  )
 import qualified Network.HTTP2.Client as H2Client
 import Network.Socket
-import Network.Socket.BufferPool
-import qualified Network.Socket.ByteString as NSB
 import Network.TLS hiding (HostName)
 import qualified UnliftIO.Exception as E
 
@@ -33,8 +30,9 @@ import Network.HTTP2.TLS.Supported
 ----------------------------------------------------------------
 
 run :: HostName -> PortNumber -> Client a -> IO a
-run serverName port client = E.bracket open close $ \sock ->
-    E.bracket (contextNew sock params) bye $ \ctx -> do
+run serverName port client = E.bracket open close $ \sock -> do
+    backend <- mkBackend sock
+    E.bracket (contextNew backend params) bye $ \ctx -> do
         handshake ctx
         let send = sendTLS ctx
             recv = recvTLS ctx
@@ -45,9 +43,8 @@ run serverName port client = E.bracket open close $ \sock ->
 
 runH2C :: HostName -> PortNumber -> Client a -> IO a
 runH2C serverName port client = E.bracket open close $ \sock -> do
-    pool <- newBufferPool 2048 16384
-    let send = void . NSB.send sock
-        recv = receive sock pool
+    let send = sendTCP sock
+    recv <- mkRecvTCP sock
     run' "http" serverName send recv client
   where
     open = openTCP serverName port

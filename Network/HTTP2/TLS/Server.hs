@@ -32,8 +32,9 @@ import Network.HTTP2.TLS.Supported
 
 run :: Credentials -> HostName -> PortNumber -> Server -> IO ()
 run creds host port server = do
-    runTCPServer (Just host) (show port) $ \sock ->
-        E.bracket (contextNew sock params) bye $ \ctx -> do
+    runTCPServer (Just host) (show port) $ \sock -> do
+        backend <- mkBackend sock
+        E.bracket (contextNew backend params) bye $ \ctx -> do
             handshake ctx
             let send = sendTLS ctx
                 recv = recvTLS ctx
