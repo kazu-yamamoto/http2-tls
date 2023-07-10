@@ -8,7 +8,7 @@ module Network.HTTP2.TLS.Client (
     HostName,
     PortNumber,
     runTLS,
-    IOBackend(..),
+    IOBackend (..),
 ) where
 
 import Data.ByteString (ByteString)

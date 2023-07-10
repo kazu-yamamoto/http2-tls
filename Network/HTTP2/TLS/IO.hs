@@ -30,9 +30,8 @@ sendTCP sock = NSB.sendAll sock
 
 ----------------------------------------------------------------
 
-data IOBackend =
-    IOBackend {
-      send :: ByteString -> IO ()
+data IOBackend = IOBackend
+    { send :: ByteString -> IO ()
     , sendMany :: [ByteString] -> IO ()
     , recv :: IO ByteString
     }
@@ -41,12 +40,12 @@ timeoutIOBackend :: T.Handle -> Int -> IOBackend -> IOBackend
 timeoutIOBackend th slowloris IOBackend{..} =
     IOBackend send' sendMany' recv'
   where
-      send' bs = send bs >> T.tickle th
-      sendMany' bss = sendMany bss >> T.tickle th
-      recv' = do
-          bs <- recv
-          when (BS.length bs > slowloris) $ T.tickle th
-          return bs
+    send' bs = send bs >> T.tickle th
+    sendMany' bss = sendMany bss >> T.tickle th
+    recv' = do
+        bs <- recv
+        when (BS.length bs > slowloris) $ T.tickle th
+        return bs
 
 ----------------------------------------------------------------
 
@@ -72,9 +71,11 @@ mkBackend sock = do
     let send' = sendTCP sock
     recv' <- mkRecvTCP sock
     recvN <- makeRecvN "" recv'
-    return Backend
-        { backendFlush = return ()
-        , backendClose = gracefulClose sock 5000 `E.catch` \(E.SomeException _) -> return ()
-        , backendSend  = send'
-        , backendRecv  = recvN
-        }
+    return
+        Backend
+            { backendFlush = return ()
+            , backendClose =
+                gracefulClose sock 5000 `E.catch` \(E.SomeException _) -> return ()
+            , backendSend = send'
+            , backendRecv = recvN
+            }
