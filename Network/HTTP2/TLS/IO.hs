@@ -1,14 +1,18 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Network.HTTP2.TLS.IO where
 
+import Control.Monad (when)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import Network.Socket
 import Network.Socket.BufferPool
 import qualified Network.Socket.ByteString as NSB
 import Network.TLS hiding (HostName)
 import System.IO.Error (isEOFError)
+import qualified System.TimeManager as T
 import qualified UnliftIO.Exception as E
 
 -- HTTP2: confReadN == recvTLS
@@ -32,6 +36,19 @@ data IOBackend =
     , sendMany :: [ByteString] -> IO ()
     , recv :: IO ByteString
     }
+
+timeoutIOBackend :: T.Handle -> Int -> IOBackend -> IOBackend
+timeoutIOBackend th slowloris IOBackend{..} =
+    IOBackend send' sendMany' recv'
+  where
+      send' bs = send bs >> T.tickle th
+      sendMany' bss = sendMany bss >> T.tickle th
+      recv' = do
+          bs <- recv
+          when (BS.length bs > slowloris) $ T.tickle th
+          return bs
+
+----------------------------------------------------------------
 
 sendTLS :: Context -> ByteString -> IO ()
 sendTLS ctx = sendData ctx . LBS.fromStrict

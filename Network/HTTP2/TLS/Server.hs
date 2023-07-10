@@ -21,17 +21,14 @@ import Network.Socket (
     HostName,
     PortNumber,
  )
-import Network.Socket.BufferPool
 import qualified Network.Socket.ByteString as NSB
 import Network.TLS hiding (HostName)
 import qualified UnliftIO.Exception as E
+import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
 import Network.HTTP2.TLS.Supported
-
-run :: Credentials -> HostName -> PortNumber -> Server -> IO ()
-run creds host port server = runTLS creds host port "h2" $ run' server
 
 runTLS
     :: Credentials
@@ -41,22 +38,36 @@ runTLS
     -- ^ ALPN
     -> (IOBackend -> IO a)
     -> IO a
-runTLS creds host port alpn action  = do
+runTLS creds host port alpn action = T.withManager 30000000 $ \mgr ->
     runTCPServer (Just host) (show port) $ \sock -> do
+        th <- T.registerKillThread mgr $ return ()
         backend <- mkBackend sock
         E.bracket (contextNew backend params) bye $ \ctx -> do
             handshake ctx
-            action $ IOBackend (sendTLS ctx) (sendManyTLS ctx) (recvTLS ctx)
+            let iobackend = timeoutIOBackend th 50 $ IOBackend {
+                    send = sendTLS ctx
+                  , sendMany = sendManyTLS ctx
+                  , recv = recvTLS ctx
+                  }
+            action iobackend
   where
     params = getServerParams creds alpn
 
+run :: Credentials -> HostName -> PortNumber -> Server -> IO ()
+run creds host port server = runTLS creds host port "h2" $ run' server
+
 runH2C :: HostName -> PortNumber -> Server -> IO ()
-runH2C host port server = do
+runH2C host port server = T.withManager 30000000 $ \mgr ->
     runTCPServer (Just host) (show port) $ \sock -> do
-        pool <- newBufferPool 2048 16384
-        let send = void . NSB.send sock
-            recv = receive sock pool
-        run' server $ IOBackend send (\_ -> return ()) recv
+        th <- T.registerKillThread mgr $ return ()
+        recv' <- mkRecvTCP sock
+        let send' = void . NSB.send sock
+        let iobackend = timeoutIOBackend th 50 $ IOBackend {
+                send = send'
+              , sendMany = \_ -> return ()
+              , recv = recv'
+              }
+        run' server iobackend
 
 run' :: Server -> IOBackend -> IO ()
 run' server IOBackend{..} =
