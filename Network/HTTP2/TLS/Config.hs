@@ -11,10 +11,10 @@ import Network.HTTP2.Client (
 import Network.Socket.BufferPool
 import qualified System.TimeManager as T
 
-allocConfig :: Int -> (ByteString -> IO ()) -> IO ByteString -> IO Config
-allocConfig sendbufsiz send recv = do
+allocConfig
+    :: T.Manager -> Int -> (ByteString -> IO ()) -> IO ByteString -> IO Config
+allocConfig mgr sendbufsiz send recv = do
     buf <- mallocBytes sendbufsiz
-    timmgr <- T.initialize $ 30 * 1000000
     recvN <- makeRecvN "" recv
     let config =
             Config
@@ -23,12 +23,10 @@ allocConfig sendbufsiz send recv = do
                 , confSendAll = send
                 , confReadN = recvN
                 , confPositionReadMaker = defaultPositionReadMaker
-                , confTimeoutManager = timmgr
+                , confTimeoutManager = mgr
                 }
     return config
 
 -- | Deallocating the resource of the simple configuration.
 freeConfig :: Config -> IO ()
-freeConfig conf = do
-    free $ confWriteBuffer conf
-    T.killManager $ confTimeoutManager conf
+freeConfig conf = free $ confWriteBuffer conf

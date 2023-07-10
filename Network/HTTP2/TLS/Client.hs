@@ -35,7 +35,7 @@ runTLS
     -> PortNumber
     -> ByteString
     -- ^ ALPN
-    -> (IOBackend -> IO a)
+    -> (T.Manager -> IOBackend -> IO a)
     -> IO a
 runTLS serverName port alpn action = T.withManager 30000000 $ \mgr ->
     E.bracket open close $ \sock -> do
@@ -44,7 +44,7 @@ runTLS serverName port alpn action = T.withManager 30000000 $ \mgr ->
         E.bracket (contextNew backend params) bye $ \ctx -> do
             handshake ctx
             let iobackend = timeoutIOBackend th 50 $ tlsIOBackend ctx
-            action iobackend
+            action mgr iobackend
   where
     open = openTCP serverName port
     params = getClientParams serverName alpn False
@@ -59,7 +59,7 @@ runH2C serverName port client = T.withManager 30000000 $ \mgr ->
         th <- T.registerKillThread mgr $ return ()
         iobackend0 <- tcpIOBackend sock
         let iobackend = timeoutIOBackend th 50 iobackend0
-        run' "http" serverName client iobackend
+        run' "http" serverName client mgr iobackend
   where
     open = openTCP serverName port
 
@@ -67,11 +67,14 @@ run'
     :: ByteString
     -> HostName
     -> Client a
+    -> T.Manager
     -> IOBackend
     -> IO a
-run' schm serverName client IOBackend{..} =
-    E.bracket (allocConfig 4096 send recv) freeConfig $ \conf ->
-        H2Client.run cliconf conf client
+run' schm serverName client mgr IOBackend{..} =
+    E.bracket
+        (allocConfig mgr 4096 send recv)
+        freeConfig
+        (\conf -> H2Client.run cliconf conf client)
   where
     cliconf =
         ClientConfig
