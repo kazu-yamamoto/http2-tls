@@ -11,7 +11,6 @@ module Network.HTTP2.TLS.Server (
     IOBackend (..),
 ) where
 
-import Control.Monad (void)
 import Data.ByteString (ByteString)
 import Data.Default.Class (def)
 import Network.HTTP2.Server (Server)
@@ -21,7 +20,6 @@ import Network.Socket (
     HostName,
     PortNumber,
  )
-import qualified Network.Socket.ByteString as NSB
 import Network.TLS hiding (HostName)
 import qualified System.TimeManager as T
 import qualified UnliftIO.Exception as E
@@ -44,13 +42,7 @@ runTLS creds host port alpn action = T.withManager 30000000 $ \mgr ->
         backend <- mkBackend sock
         E.bracket (contextNew backend params) bye $ \ctx -> do
             handshake ctx
-            let iobackend =
-                    timeoutIOBackend th 50 $
-                        IOBackend
-                            { send = sendTLS ctx
-                            , sendMany = sendManyTLS ctx
-                            , recv = recvTLS ctx
-                            }
+            let iobackend = timeoutIOBackend th 50 $ tlsIOBackend ctx
             action iobackend
   where
     params = getServerParams creds alpn
@@ -62,15 +54,8 @@ runH2C :: HostName -> PortNumber -> Server -> IO ()
 runH2C host port server = T.withManager 30000000 $ \mgr ->
     runTCPServer (Just host) (show port) $ \sock -> do
         th <- T.registerKillThread mgr $ return ()
-        recv' <- mkRecvTCP sock
-        let send' = void . NSB.send sock
-        let iobackend =
-                timeoutIOBackend th 50 $
-                    IOBackend
-                        { send = send'
-                        , sendMany = \_ -> return ()
-                        , recv = recv'
-                        }
+        iobackend0 <- tcpIOBackend sock
+        let iobackend = timeoutIOBackend th 50 iobackend0
         run' server iobackend
 
 run' :: Server -> IOBackend -> IO ()

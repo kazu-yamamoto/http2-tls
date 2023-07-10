@@ -21,6 +21,7 @@ import Network.HTTP2.Client (
 import qualified Network.HTTP2.Client as H2Client
 import Network.Socket
 import Network.TLS hiding (HostName)
+import qualified System.TimeManager as T
 import qualified UnliftIO.Exception as E
 
 import Network.HTTP2.TLS.Config
@@ -29,10 +30,6 @@ import Network.HTTP2.TLS.Supported
 
 ----------------------------------------------------------------
 
-run :: HostName -> PortNumber -> Client a -> IO a
-run serverName port client =
-    runTLS serverName port "h2" $ run' "https" serverName client
-
 runTLS
     :: HostName
     -> PortNumber
@@ -40,20 +37,29 @@ runTLS
     -- ^ ALPN
     -> (IOBackend -> IO a)
     -> IO a
-runTLS serverName port alpn action = E.bracket open close $ \sock -> do
-    backend <- mkBackend sock
-    E.bracket (contextNew backend params) bye $ \ctx -> do
-        handshake ctx
-        action $ IOBackend (sendTLS ctx) (sendManyTLS ctx) (recvTLS ctx)
+runTLS serverName port alpn action = T.withManager 30000000 $ \mgr ->
+    E.bracket open close $ \sock -> do
+        th <- T.registerKillThread mgr $ return ()
+        backend <- mkBackend sock
+        E.bracket (contextNew backend params) bye $ \ctx -> do
+            handshake ctx
+            let iobackend = timeoutIOBackend th 50 $ tlsIOBackend ctx
+            action iobackend
   where
     open = openTCP serverName port
     params = getClientParams serverName alpn False
 
+run :: HostName -> PortNumber -> Client a -> IO a
+run serverName port client =
+    runTLS serverName port "h2" $ run' "https" serverName client
+
 runH2C :: HostName -> PortNumber -> Client a -> IO a
-runH2C serverName port client = E.bracket open close $ \sock -> do
-    let send = sendTCP sock
-    recv <- mkRecvTCP sock
-    run' "http" serverName client $ IOBackend send (\_ -> return ()) recv
+runH2C serverName port client = T.withManager 30000000 $ \mgr ->
+    E.bracket open close $ \sock -> do
+        th <- T.registerKillThread mgr $ return ()
+        iobackend0 <- tcpIOBackend sock
+        let iobackend = timeoutIOBackend th 50 iobackend0
+        run' "http" serverName client iobackend
   where
     open = openTCP serverName port
 

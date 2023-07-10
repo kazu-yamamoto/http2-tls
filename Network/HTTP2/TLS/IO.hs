@@ -3,7 +3,7 @@
 
 module Network.HTTP2.TLS.IO where
 
-import Control.Monad (when)
+import Control.Monad (void, when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -46,6 +46,24 @@ timeoutIOBackend th slowloris IOBackend{..} =
         bs <- recv
         when (BS.length bs > slowloris) $ T.tickle th
         return bs
+
+tlsIOBackend :: Context -> IOBackend
+tlsIOBackend ctx =
+    IOBackend
+        { send = sendTLS ctx
+        , sendMany = sendManyTLS ctx
+        , recv = recvTLS ctx
+        }
+
+tcpIOBackend :: Socket -> IO IOBackend
+tcpIOBackend sock = do
+    recv' <- mkRecvTCP sock
+    return $
+        IOBackend
+            { send = void . NSB.send sock
+            , sendMany = \_ -> return ()
+            , recv = recv'
+            }
 
 ----------------------------------------------------------------
 
