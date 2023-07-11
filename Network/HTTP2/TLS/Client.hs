@@ -55,7 +55,7 @@ runTLS
     -> (T.Manager -> IOBackend -> IO a)
     -> IO a
 runTLS settings@Settings{..} serverName port alpn action =
-    T.withManager (settingsTimeout * 1000000) $ \mgr ->
+    T.withManager' (settingsTimeout * 1000000) $ \mgr ->
         E.bracket open close $ \sock -> do
             th <- T.registerKillThread mgr $ return ()
             backend <- mkBackend settings sock
@@ -73,7 +73,7 @@ run settings serverName port client =
 
 runH2C :: Settings -> HostName -> PortNumber -> Client a -> IO a
 runH2C settings@Settings{..} serverName port client =
-    T.withManager (settingsTimeout * 1000000) $ \mgr ->
+    T.withManager' (settingsTimeout * 1000000) $ \mgr ->
         E.bracket open close $ \sock -> do
             th <- T.registerKillThread mgr $ return ()
             iobackend0 <- tcpIOBackend settings sock
