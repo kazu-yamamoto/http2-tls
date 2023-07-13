@@ -44,6 +44,9 @@ import Network.HTTP2.TLS.IO
 import Network.HTTP2.TLS.Settings
 import Network.HTTP2.TLS.Supported
 
+-- | Running a TLS client.
+--   'IOBackend' provides sending and receiving functions
+--   with timeout based on 'Settings'.
 runTLS
     :: Settings
     -> Credentials
@@ -58,20 +61,23 @@ runTLS settings@Settings{..} creds host port alpn action =
         backend <- mkBackend settings sock
         E.bracket (contextNew backend params) bye $ \ctx -> do
             handshake ctx
-            let iobackend = timeoutIOBackend th 50 $ tlsIOBackend ctx
+            let iobackend = timeoutIOBackend th settings $ tlsIOBackend ctx
             action mgr iobackend
   where
     params = getServerParams creds alpn
 
+-- | Running an HTTP\/2 client over TLS (over TCP).
+--   ALPN is "h2".
 run :: Settings -> Credentials -> HostName -> PortNumber -> Server -> IO ()
 run settings creds host port server =
     runTLS settings creds host port "h2" $ run' settings server
 
+-- | Running an HTTP\/2 client over TCP.
 runH2C :: Settings -> HostName -> PortNumber -> Server -> IO ()
 runH2C settings@Settings{..} host port server =
     runTCPServer settingsTimeout (Just host) (show port) $ \mgr th sock -> do
         iobackend0 <- tcpIOBackend settings sock
-        let iobackend = timeoutIOBackend th 50 iobackend0
+        let iobackend = timeoutIOBackend th settings iobackend0
         run' settings server mgr iobackend
 
 run' :: Settings -> Server -> T.Manager -> IOBackend -> IO ()

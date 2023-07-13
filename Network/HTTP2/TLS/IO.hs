@@ -34,21 +34,28 @@ sendTCP sock = NSB.sendAll sock
 
 ----------------------------------------------------------------
 
+-- | Sending and receiving functions.
+--   Tiemout is reset when they return.
+--   One exception is the slowloris attach prevention.
+--   See 'settingsSlowlorisSize'.
 data IOBackend = IOBackend
     { send :: ByteString -> IO ()
+    -- ^ Sending.
     , sendMany :: [ByteString] -> IO ()
+    -- ^ Sending many.
     , recv :: IO ByteString
+    -- ^ Receiving.
     }
 
-timeoutIOBackend :: T.Handle -> Int -> IOBackend -> IOBackend
-timeoutIOBackend th slowloris IOBackend{..} =
+timeoutIOBackend :: T.Handle -> Settings -> IOBackend -> IOBackend
+timeoutIOBackend th Settings{..} IOBackend{..} =
     IOBackend send' sendMany' recv'
   where
     send' bs = send bs >> T.tickle th
     sendMany' bss = sendMany bss >> T.tickle th
     recv' = do
         bs <- recv
-        when (BS.length bs > slowloris) $ T.tickle th
+        when (BS.length bs > settingsSlowlorisSize) $ T.tickle th
         return bs
 
 tlsIOBackend :: Context -> IOBackend
