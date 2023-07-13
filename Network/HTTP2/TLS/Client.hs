@@ -26,6 +26,7 @@ import qualified UnliftIO.Exception as E
 
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
+import Network.HTTP2.TLS.Settings
 import Network.HTTP2.TLS.Supported
 
 ----------------------------------------------------------------
@@ -57,7 +58,7 @@ run serverName port client =
 runH2C :: HostName -> PortNumber -> Client a -> IO a
 runH2C serverName port client =
     E.bracket open close $ \sock -> do
-        recv <- mkRecvTCP undefined sock
+        recv <- mkRecvTCP defaultSettings sock
         run' "http" serverName (sendTCP sock) recv client
   where
     open = openTCP serverName port
