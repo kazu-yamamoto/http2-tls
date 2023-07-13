@@ -38,7 +38,7 @@ library
         data-default-class,
         http2,
         network,
-        network-run,
+        network-run >=0.2.6,
         recv,
         time-manager,
         tls,
