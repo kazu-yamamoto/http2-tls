@@ -71,8 +71,8 @@ run'
     -> IO a
 run' schm serverName send recv client =
     E.bracket
-        (allocConfig' send recv)
-        freeConfig'
+        (allocConfigForClient send recv)
+        freeConfigForClient
         (\conf -> H2Client.run cliconf conf client)
   where
     cliconf =

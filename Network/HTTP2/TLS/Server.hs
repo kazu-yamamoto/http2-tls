@@ -77,8 +77,8 @@ runH2C settings@Settings{..} host port server =
 run' :: Settings -> Server -> T.Manager -> IOBackend -> IO ()
 run' settings server mgr IOBackend{..} =
     E.bracket
-        (allocConfig settings mgr send recv)
-        freeConfig
+        (allocConfigForServer settings mgr send recv)
+        freeConfigForServer
         (\conf -> H2Server.run conf server)
 
 ----------------------------------------------------------------

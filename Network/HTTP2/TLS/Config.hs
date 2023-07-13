@@ -14,9 +14,9 @@ import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Settings
 
-allocConfig
+allocConfigForServer
     :: Settings -> T.Manager -> (ByteString -> IO ()) -> IO ByteString -> IO Config
-allocConfig Settings{..} mgr send recv = do
+allocConfigForServer Settings{..} mgr send recv = do
     buf <- mallocBytes settingsSendBufferSize
     recvN <- makeRecvN "" recv
     let config =
@@ -31,12 +31,12 @@ allocConfig Settings{..} mgr send recv = do
     return config
 
 -- | Deallocating the resource of the simple configuration.
-freeConfig :: Config -> IO ()
-freeConfig conf = free $ confWriteBuffer conf
+freeConfigForServer :: Config -> IO ()
+freeConfigForServer conf = free $ confWriteBuffer conf
 
 
-allocConfig' :: (ByteString -> IO ()) -> IO ByteString -> IO Config
-allocConfig' send recv = do
+allocConfigForClient :: (ByteString -> IO ()) -> IO ByteString -> IO Config
+allocConfigForClient send recv = do
     let wbufsiz = 4096 -- fixme
     buf <- mallocBytes wbufsiz
     recvN <- makeRecvN "" recv
@@ -55,7 +55,7 @@ allocConfig' send recv = do
     return config
 
 -- | Deallocating the resource of the simple configuration.
-freeConfig' :: Config -> IO ()
-freeConfig' Config{..} = do
+freeConfigForClient :: Config -> IO ()
+freeConfigForClient Config{..} = do
     free confWriteBuffer
     T.killManager confTimeoutManager
