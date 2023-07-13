@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
+-- | Running an HTTP\/2 client over TLS.
 module Network.HTTP2.TLS.Client (
     -- * Runners
     run,
@@ -9,21 +10,6 @@ module Network.HTTP2.TLS.Client (
     HostName,
     PortNumber,
     runTLS,
-
-    -- * Settings
-    Settings,
-    defaultSettings,
-    settingsTimeout,
-    settingsSendBufferSize,
-    settingsSlowlorisSize,
-    settingReadBufferSize,
-    settingReadBufferLowerLimit,
-
-    -- * IO backend
-    IOBackend,
-    send,
-    sendMany,
-    recv,
 ) where
 
 import Data.ByteString (ByteString)
@@ -36,64 +22,57 @@ import Network.HTTP2.Client (
 import qualified Network.HTTP2.Client as H2Client
 import Network.Socket
 import Network.TLS hiding (HostName)
-import qualified System.TimeManager as T
 import qualified UnliftIO.Exception as E
 
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
-import Network.HTTP2.TLS.Settings
 import Network.HTTP2.TLS.Supported
 
 ----------------------------------------------------------------
 
+-- | Running a TLS client.
 runTLS
-    :: Settings
-    -> HostName
+    :: HostName
     -> PortNumber
     -> ByteString
     -- ^ ALPN
-    -> (T.Manager -> IOBackend -> IO a)
+    -> (Context -> IO a)
     -> IO a
-runTLS settings@Settings{..} serverName port alpn action =
-    T.withManager' (settingsTimeout * 1000000) $ \mgr ->
-        E.bracket open close $ \sock -> do
-            th <- T.registerKillThread mgr $ return ()
-            backend <- mkBackend settings sock
-            E.bracket (contextNew backend params) bye $ \ctx -> do
-                handshake ctx
-                let iobackend = timeoutIOBackend th settingsSlowlorisSize $ tlsIOBackend ctx
-                action mgr iobackend
+runTLS serverName port alpn action =
+    E.bracket open close $ \sock -> do
+        E.bracket (contextNew sock params) bye $ \ctx -> do
+            handshake ctx
+            action ctx
   where
     open = openTCP serverName port
     params = getClientParams serverName alpn False
 
-run :: Settings -> HostName -> PortNumber -> Client a -> IO a
-run settings serverName port client =
-    runTLS settings serverName port "h2" $ run' settings "https" serverName client
+-- | Running an HTTP\/2 client over TLS (over TCP).
+run :: HostName -> PortNumber -> Client a -> IO a
+run serverName port client =
+    runTLS serverName port "h2" $ \ctx ->
+        run' "https" serverName (sendTLS ctx) (recvTLS ctx) client
 
-runH2C :: Settings -> HostName -> PortNumber -> Client a -> IO a
-runH2C settings@Settings{..} serverName port client =
-    T.withManager' (settingsTimeout * 1000000) $ \mgr ->
-        E.bracket open close $ \sock -> do
-            th <- T.registerKillThread mgr $ return ()
-            iobackend0 <- tcpIOBackend settings sock
-            let iobackend = timeoutIOBackend th settingsSlowlorisSize iobackend0
-            run' settings "http" serverName client mgr iobackend
+-- | Running an HTTP\/2 client over TCP.
+runH2C :: HostName -> PortNumber -> Client a -> IO a
+runH2C serverName port client =
+    E.bracket open close $ \sock -> do
+        recv <- mkRecvTCP undefined sock
+        run' "http" serverName (sendTCP sock) recv client
   where
     open = openTCP serverName port
 
 run'
-    :: Settings
-    -> ByteString
+    :: ByteString
     -> HostName
+    -> (ByteString -> IO ())
+    -> IO ByteString
     -> Client a
-    -> T.Manager
-    -> IOBackend
     -> IO a
-run' settings schm serverName client mgr IOBackend{..} =
+run' schm serverName send recv client =
     E.bracket
-        (allocConfig settings mgr send recv)
-        freeConfig
+        (allocConfig' send recv)
+        freeConfig'
         (\conf -> H2Client.run cliconf conf client)
   where
     cliconf =

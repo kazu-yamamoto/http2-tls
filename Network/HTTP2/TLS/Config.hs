@@ -33,3 +33,29 @@ allocConfig Settings{..} mgr send recv = do
 -- | Deallocating the resource of the simple configuration.
 freeConfig :: Config -> IO ()
 freeConfig conf = free $ confWriteBuffer conf
+
+
+allocConfig' :: (ByteString -> IO ()) -> IO ByteString -> IO Config
+allocConfig' send recv = do
+    let wbufsiz = 4096 -- fixme
+    buf <- mallocBytes wbufsiz
+    recvN <- makeRecvN "" recv
+    -- A global manager does not exist.
+    -- So, a timeout manager is created per connection.
+    mgr <- T.initialize 30000000 -- fixme
+    let config =
+            Config
+                { confWriteBuffer = buf
+                , confBufferSize = wbufsiz
+                , confSendAll = send
+                , confReadN = recvN
+                , confPositionReadMaker = defaultPositionReadMaker
+                , confTimeoutManager = mgr
+                }
+    return config
+
+-- | Deallocating the resource of the simple configuration.
+freeConfig' :: Config -> IO ()
+freeConfig' Config{..} = do
+    free confWriteBuffer
+    T.killManager confTimeoutManager
