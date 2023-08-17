@@ -41,5 +41,5 @@ library
         network-run >=0.2.6,
         recv,
         time-manager,
-        tls,
+        tls >=1.7.0,
         unliftio

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -89,7 +90,11 @@ recvTLS :: Context -> IO ByteString
 recvTLS ctx = E.handle onEOF $ recvData ctx
   where
     onEOF e
+#if MIN_VERSION_tls(1,8,0)
+        | Just (PostHandshake Error_EOF) <- E.fromException e = return ""
+#else
         | Just Error_EOF <- E.fromException e = return ""
+#endif
         | Just ioe <- E.fromException e, isEOFError ioe = return ""
         | otherwise = E.throwIO e
 
