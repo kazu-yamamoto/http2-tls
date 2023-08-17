@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
-## 0.0.0.0 -- YYYY-mm-dd
+## 0.0.1
 
-* First version. Released on an unsuspecting world.
+* Supporting `tls` v1.8.0.
+
+## 0.0.0
+
+* First version.
