@@ -24,6 +24,8 @@ module Network.HTTP2.TLS.Server (
     send,
     sendMany,
     recv,
+    mySockAddr,
+    peerSockAddr,
 ) where
 
 import Data.ByteString (ByteString)
@@ -61,7 +63,7 @@ runTLS settings@Settings{..} creds host port alpn action =
         backend <- mkBackend settings sock
         E.bracket (contextNew backend params) bye $ \ctx -> do
             handshake ctx
-            let iobackend = timeoutIOBackend th settings $ tlsIOBackend ctx
+            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
             action mgr iobackend
   where
     params = getServerParams creds alpn
@@ -83,7 +85,7 @@ runH2C settings@Settings{..} host port server =
 run' :: Settings -> Server -> T.Manager -> IOBackend -> IO ()
 run' settings server mgr IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings mgr send recv)
+        (allocConfigForServer settings mgr send recv mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> H2Server.run conf server)
 
