@@ -38,13 +38,15 @@ runTLS
     -> PortNumber
     -> ByteString
     -- ^ ALPN
-    -> (Context -> IO a)
+    -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
 runTLS serverName port alpn action =
     E.bracket open close $ \sock -> do
+        mysa <- getSocketName sock
+        peersa <- getPeerName sock
         E.bracket (contextNew sock params) bye $ \ctx -> do
             handshake ctx
-            action ctx
+            action ctx mysa peersa
   where
     open = openTCP serverName port
     params = getClientParams serverName alpn False
@@ -52,15 +54,17 @@ runTLS serverName port alpn action =
 -- | Running an HTTP\/2 client over TLS (over TCP).
 run :: HostName -> PortNumber -> Client a -> IO a
 run serverName port client =
-    runTLS serverName port "h2" $ \ctx ->
-        run' "https" serverName (sendTLS ctx) (recvTLS ctx) client
+    runTLS serverName port "h2" $ \ctx mysa peersa ->
+        run' "https" serverName (sendTLS ctx) (recvTLS ctx) mysa peersa client
 
 -- | Running an HTTP\/2 client over TCP.
 runH2C :: HostName -> PortNumber -> Client a -> IO a
 runH2C serverName port client =
     E.bracket open close $ \sock -> do
+        mysa <- getSocketName sock
+        peersa <- getPeerName sock
         recv <- mkRecvTCP defaultSettings sock
-        run' "http" serverName (sendTCP sock) recv client
+        run' "http" serverName (sendTCP sock) recv mysa peersa client
   where
     open = openTCP serverName port
 
@@ -69,11 +73,13 @@ run'
     -> HostName
     -> (ByteString -> IO ())
     -> IO ByteString
+    -> SockAddr
+    -> SockAddr
     -> Client a
     -> IO a
-run' schm serverName send recv client =
+run' schm serverName send recv mysa peersa client =
     E.bracket
-        (allocConfigForClient send recv)
+        (allocConfigForClient send recv mysa peersa)
         freeConfigForClient
         (\conf -> H2Client.run cliconf conf client)
   where

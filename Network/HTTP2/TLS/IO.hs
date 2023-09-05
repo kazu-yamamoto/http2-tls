@@ -46,11 +46,13 @@ data IOBackend = IOBackend
     -- ^ Sending many.
     , recv :: IO ByteString
     -- ^ Receiving.
+    , mySockAddr :: SockAddr
+    , peerSockAddr :: SockAddr
     }
 
 timeoutIOBackend :: T.Handle -> Settings -> IOBackend -> IOBackend
 timeoutIOBackend th Settings{..} IOBackend{..} =
-    IOBackend send' sendMany' recv'
+    IOBackend send' sendMany' recv' mySockAddr peerSockAddr
   where
     send' bs = send bs >> T.tickle th
     sendMany' bss = sendMany bss >> T.tickle th
@@ -59,22 +61,31 @@ timeoutIOBackend th Settings{..} IOBackend{..} =
         when (BS.length bs > settingsSlowlorisSize) $ T.tickle th
         return bs
 
-tlsIOBackend :: Context -> IOBackend
-tlsIOBackend ctx =
-    IOBackend
-        { send = sendTLS ctx
-        , sendMany = sendManyTLS ctx
-        , recv = recvTLS ctx
-        }
+tlsIOBackend :: Context -> Socket -> IO IOBackend
+tlsIOBackend ctx sock = do
+    mysa <- getSocketName sock
+    peersa <- getPeerName sock
+    return $
+        IOBackend
+            { send = sendTLS ctx
+            , sendMany = sendManyTLS ctx
+            , recv = recvTLS ctx
+            , mySockAddr = mysa
+            , peerSockAddr = peersa
+            }
 
 tcpIOBackend :: Settings -> Socket -> IO IOBackend
 tcpIOBackend settings sock = do
     recv' <- mkRecvTCP settings sock
+    mysa <- getSocketName sock
+    peersa <- getPeerName sock
     return $
         IOBackend
             { send = void . NSB.send sock
             , sendMany = \_ -> return ()
             , recv = recv'
+            , mySockAddr = mysa
+            , peerSockAddr = peersa
             }
 
 ----------------------------------------------------------------

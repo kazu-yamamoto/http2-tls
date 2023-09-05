@@ -9,14 +9,15 @@ import Network.HTTP2.Client (
     Config (..),
     defaultPositionReadMaker,
  )
+import Network.Socket (SockAddr)
 import Network.Socket.BufferPool
 import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Settings
 
 allocConfigForServer
-    :: Settings -> T.Manager -> (ByteString -> IO ()) -> IO ByteString -> IO Config
-allocConfigForServer Settings{..} mgr send recv = do
+    :: Settings -> T.Manager -> (ByteString -> IO ()) -> IO ByteString -> SockAddr -> SockAddr -> IO Config
+allocConfigForServer Settings{..} mgr send recv mysa peersa = do
     buf <- mallocBytes settingsSendBufferSize
     recvN <- makeRecvN "" recv
     let config =
@@ -27,6 +28,8 @@ allocConfigForServer Settings{..} mgr send recv = do
                 , confReadN = recvN
                 , confPositionReadMaker = defaultPositionReadMaker
                 , confTimeoutManager = mgr
+                , confMySockAddr = mysa
+                , confPeerSockAddr = peersa
                 }
     return config
 
@@ -35,8 +38,8 @@ freeConfigForServer :: Config -> IO ()
 freeConfigForServer conf = free $ confWriteBuffer conf
 
 
-allocConfigForClient :: (ByteString -> IO ()) -> IO ByteString -> IO Config
-allocConfigForClient send recv = do
+allocConfigForClient :: (ByteString -> IO ()) -> IO ByteString -> SockAddr -> SockAddr -> IO Config
+allocConfigForClient send recv mysa peersa = do
     let wbufsiz = 4096 -- fixme
     buf <- mallocBytes wbufsiz
     recvN <- makeRecvN "" recv
@@ -51,6 +54,8 @@ allocConfigForClient send recv = do
                 , confReadN = recvN
                 , confPositionReadMaker = defaultPositionReadMaker
                 , confTimeoutManager = mgr
+                , confMySockAddr = mysa
+                , confPeerSockAddr = peersa
                 }
     return config
 
