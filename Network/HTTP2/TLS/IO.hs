@@ -16,7 +16,7 @@ import System.IO.Error (isEOFError)
 import qualified System.TimeManager as T
 import qualified UnliftIO.Exception as E
 
-import Network.HTTP2.TLS.Settings
+import Network.HTTP2.TLS.Server.Settings
 
 ----------------------------------------------------------------
 

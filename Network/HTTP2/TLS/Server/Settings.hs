@@ -1,6 +1,6 @@
-module Network.HTTP2.TLS.Settings where
+module Network.HTTP2.TLS.Server.Settings where
 
--- Settings type.
+-- Server settings type.
 data Settings = Settings
     { settingsTimeout :: Int
     -- ^ Timeout in seconds. (All)
@@ -14,12 +14,13 @@ data Settings = Settings
     -- ^ When the size of a read buffer is lower than this limit, the buffer is thrown awany (and is eventually freed). Then a new buffer is allocated. (All)
     , settingReadBufferLowerLimit :: Int
     -- ^  The allocation size for a read buffer.  (All)
-    } deriving (Eq, Show)
+    , settingsKeyLogger :: String -> IO ()
+    -- ^ Key logger (defaults to none)
+    --
+    -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable.
+    }
 
 -- | Default settings.
---
--- >>> defaultSettings
--- Settings {settingsTimeout = 30, settingsSendBufferSize = 4096, settingsSlowlorisSize = 50, settingReadBufferSize = 16384, settingReadBufferLowerLimit = 2048}
 defaultSettings :: Settings
 defaultSettings =
     Settings
@@ -28,4 +29,5 @@ defaultSettings =
         , settingsSlowlorisSize = 50
         , settingReadBufferSize = 16384
         , settingReadBufferLowerLimit = 2048
+        , settingsKeyLogger = \_ -> return ()
         }
