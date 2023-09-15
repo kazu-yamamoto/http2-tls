@@ -16,8 +16,9 @@ module Network.HTTP2.TLS.Server (
     settingsTimeout,
     settingsSendBufferSize,
     settingsSlowlorisSize,
-    settingReadBufferSize,
-    settingReadBufferLowerLimit,
+    settingsReadBufferSize,
+    settingsReadBufferLowerLimit,
+    settingsKeyLogger,
 
     -- * IO backend
     IOBackend,
@@ -43,7 +44,7 @@ import qualified UnliftIO.Exception as E
 
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
-import Network.HTTP2.TLS.Settings
+import Network.HTTP2.TLS.Server.Settings
 import Network.HTTP2.TLS.Supported
 
 -- | Running a TLS client.
@@ -66,7 +67,7 @@ runTLS settings@Settings{..} creds host port alpn action =
             iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
             action mgr iobackend
   where
-    params = getServerParams creds alpn
+    params = getServerParams creds alpn settingsKeyLogger
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
 --   ALPN is "h2".
@@ -94,12 +95,14 @@ run' settings server mgr IOBackend{..} =
 getServerParams
     :: Credentials
     -> ByteString
+    -> (String -> IO ())
     -> ServerParams
-getServerParams creds alpn =
+getServerParams creds alpn keyLogger =
     def
         { serverSupported = supported
         , serverShared = shared
         , serverHooks = hooks
+        , serverDebug = debug
         }
   where
     shared =
@@ -111,6 +114,10 @@ getServerParams creds alpn =
     hooks =
         def
             { onALPNClientSuggest = Just $ selectALPN alpn
+            }
+    debug =
+        def
+            { debugKeyLogger = keyLogger
             }
 
 selectALPN :: ByteString -> [ByteString] -> IO ByteString

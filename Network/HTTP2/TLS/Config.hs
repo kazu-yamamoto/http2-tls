@@ -13,7 +13,7 @@ import Network.Socket (SockAddr)
 import Network.Socket.BufferPool
 import qualified System.TimeManager as T
 
-import Network.HTTP2.TLS.Settings
+import Network.HTTP2.TLS.Server.Settings
 
 allocConfigForServer
     :: Settings -> T.Manager -> (ByteString -> IO ()) -> IO ByteString -> SockAddr -> SockAddr -> IO Config

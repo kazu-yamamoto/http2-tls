@@ -24,9 +24,10 @@ library
         Network.HTTP2.TLS.Server
 
     other-modules:
+        Network.HTTP2.TLS.Client.Settings
         Network.HTTP2.TLS.Config
         Network.HTTP2.TLS.IO
-        Network.HTTP2.TLS.Settings
+        Network.HTTP2.TLS.Server.Settings
         Network.HTTP2.TLS.Supported
 
     default-language:   Haskell2010
@@ -35,6 +36,8 @@ library
     build-depends:
         base >=4.9 && <5,
         bytestring,
+        crypton-x509-store,
+        crypton-x509-validation,
         data-default-class,
         http2 >= 4.2.0,
         network,

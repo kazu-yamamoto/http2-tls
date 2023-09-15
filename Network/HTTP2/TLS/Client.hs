@@ -11,11 +11,20 @@ module Network.HTTP2.TLS.Client (
     HostName,
     PortNumber,
     runTLS,
+
+    -- * Settings
+    Settings,
+    defaultSettings,
+    settingsKeyLogger,
+    settingsValidateCert,
+    settingsCAStore,
+    settingsAddrInfoFlags,
 ) where
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as C8
 import Data.Default.Class (def)
+import Data.X509.Validation (validateDefault)
 import Network.HTTP2.Client (
     Client,
     ClientConfig (..),
@@ -25,36 +34,39 @@ import Network.Socket
 import Network.TLS hiding (HostName)
 import qualified UnliftIO.Exception as E
 
+import Network.HTTP2.TLS.Client.Settings
 import Network.HTTP2.TLS.Config
+import Network.HTTP2.TLS.Internal (gclose)
 import Network.HTTP2.TLS.IO
-import Network.HTTP2.TLS.Settings
+import qualified Network.HTTP2.TLS.Server.Settings as Server
 import Network.HTTP2.TLS.Supported
 
 ----------------------------------------------------------------
 
 -- | Running a TLS client.
 runTLS
-    :: HostName
+    :: Settings
+    -> HostName
     -> PortNumber
     -> ByteString
     -- ^ ALPN
     -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
-runTLS serverName port alpn action =
-    E.bracket open close $ \sock -> do
+runTLS settings serverName port alpn action =
+    E.bracket open gclose $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
         E.bracket (contextNew sock params) bye $ \ctx -> do
             handshake ctx
             action ctx mysa peersa
   where
-    open = openTCP serverName port
-    params = getClientParams serverName alpn False
+    open = openTCP (settingsAddrInfoFlags settings) serverName port
+    params = getClientParams settings serverName alpn
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
-run :: HostName -> PortNumber -> Client a -> IO a
-run serverName port client =
-    runTLS serverName port "h2" $ \ctx mysa peersa ->
+run :: Settings -> HostName -> PortNumber -> Client a -> IO a
+run settings serverName port client =
+    runTLS settings serverName port "h2" $ \ctx mysa peersa ->
         run' "https" serverName (sendTLS ctx) (recvTLS ctx) mysa peersa client
 
 -- | Running an HTTP\/2 client over TCP.
@@ -63,10 +75,10 @@ runH2C serverName port client =
     E.bracket open close $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
-        recv <- mkRecvTCP defaultSettings sock
+        recv <- mkRecvTCP Server.defaultSettings sock
         run' "http" serverName (sendTCP sock) recv mysa peersa client
   where
-    open = openTCP serverName port
+    open = openTCP (settingsAddrInfoFlags defaultSettings) serverName port
 
 run'
     :: ByteString
@@ -90,18 +102,18 @@ run' schm serverName send recv mysa peersa client =
             , cacheLimit = 20
             }
 
-openTCP :: HostName -> PortNumber -> IO Socket
-openTCP h p = do
-    ai <- makeAddrInfo h p
+openTCP :: [AddrInfoFlag] -> HostName -> PortNumber -> IO Socket
+openTCP flags h p = do
+    ai <- makeAddrInfo flags h p
     sock <- openSocket ai
     connect sock $ addrAddress ai
     return sock
 
-makeAddrInfo :: HostName -> PortNumber -> IO AddrInfo
-makeAddrInfo nh p = do
+makeAddrInfo :: [AddrInfoFlag] -> HostName -> PortNumber -> IO AddrInfo
+makeAddrInfo flags nh p = do
     let hints =
             defaultHints
-                { addrFlags = [AI_ADDRCONFIG, AI_NUMERICHOST, AI_NUMERICSERV]
+                { addrFlags = flags
                 , addrSocketType = Stream
                 }
     let np = show p
@@ -110,33 +122,42 @@ makeAddrInfo nh p = do
 ----------------------------------------------------------------
 
 getClientParams
-    :: HostName
+    :: Settings
+    -> HostName
     -> ByteString
     -- ^ ALPN
-    -> Bool
-    -- ^ Checking server certificates
     -> ClientParams
-getClientParams serverName alpn validate =
+getClientParams Settings{..} serverName alpn =
     (defaultParamsClient serverName "")
         { clientSupported = supported
         , clientWantSessionResume = Nothing
         , clientUseServerNameIndication = True
         , clientShared = shared
         , clientHooks = hooks
+        , clientDebug = debug
         }
   where
     shared =
         def
             { sharedValidationCache = validateCache
+            , sharedCAStore = settingsCAStore
             }
     supported = strongSupported
     hooks =
         def
             { onSuggestALPN = return $ Just [alpn]
+            , onServerCertificate = validateCert
             }
     validateCache
-        | validate = def
+        | settingsValidateCert = def
         | otherwise =
             ValidationCache
                 (\_ _ _ -> return ValidationCachePass)
                 (\_ _ _ -> return ())
+    validateCert
+         | settingsValidateCert = validateDefault
+         | otherwise = \_ _ _ _ -> return []
+    debug =
+        def
+            { debugKeyLogger = settingsKeyLogger
+            }
