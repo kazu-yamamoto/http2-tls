@@ -33,7 +33,7 @@ defaultSettings =
         { settingsKeyLogger     = \_ -> return ()
         , settingsValidateCert  = True
         , settingsCAStore       = mempty
-        , settingsAddrInfoFlags = [AI_ADDRCONFIG, AI_NUMERICHOST, AI_NUMERICSERV]
+        , settingsAddrInfoFlags = []
         }
 
 
