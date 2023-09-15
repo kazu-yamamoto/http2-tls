@@ -31,7 +31,7 @@ defaultSettings :: Settings
 defaultSettings =
     Settings
         { settingsKeyLogger     = \_ -> return ()
-        , settingsValidateCert  = False
+        , settingsValidateCert  = True
         , settingsCAStore       = mempty
         , settingsAddrInfoFlags = [AI_ADDRCONFIG, AI_NUMERICHOST, AI_NUMERICSERV]
         }
