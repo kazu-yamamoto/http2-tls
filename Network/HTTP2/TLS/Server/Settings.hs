@@ -37,10 +37,7 @@ data Settings = Settings
     , settingsKeyLogger :: String -> IO ()
     -- ^ Key logger (defaults to none)
     --
-    -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable.
-    --
-    -- >>> settingsKeyLogger defaultSettings
-    -- \_ -> return ()
+    -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable. The default is do nothing.
     }
 
 -- | Default settings.

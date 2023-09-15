@@ -8,10 +8,7 @@ data Settings = Settings
     { settingsKeyLogger :: String -> IO ()
     -- ^ Key logger
     --
-    -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable.
-    --
-    -- >>> settingsKeyLogger defaultSettings
-    -- \_ -> return ()
+    -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable. Default is do nothing.
 
     , settingsValidateCert :: Bool
     -- ^ Should we validate TLS certificates?
@@ -20,10 +17,7 @@ data Settings = Settings
     -- True
 
     , settingsCAStore :: CertificateStore
-    -- ^ Certificate store used for validation
-    --
-    -- >>> settingsCAStore defaultSettings
-    -- mempty
+    -- ^ Certificate store used for validation. The default is 'mempty'.
 
     , settingsAddrInfoFlags :: [AddrInfoFlag]
     -- ^ Flags that control the querying behaviour of @getAddrInfo@.
