@@ -16,8 +16,8 @@ module Network.HTTP2.TLS.Server (
     settingsTimeout,
     settingsSendBufferSize,
     settingsSlowlorisSize,
-    settingReadBufferSize,
-    settingReadBufferLowerLimit,
+    settingsReadBufferSize,
+    settingsReadBufferLowerLimit,
     settingsKeyLogger,
 
     -- * IO backend

@@ -27,7 +27,7 @@ import Network.HTTP2.TLS.Server.Settings
 
 mkRecvTCP :: Settings -> Socket -> IO (IO ByteString)
 mkRecvTCP Settings{..} sock = do
-    pool <- newBufferPool settingReadBufferLowerLimit settingReadBufferSize
+    pool <- newBufferPool settingsReadBufferLowerLimit settingsReadBufferSize
     return $ receive sock pool
 
 sendTCP :: Socket -> ByteString -> IO ()

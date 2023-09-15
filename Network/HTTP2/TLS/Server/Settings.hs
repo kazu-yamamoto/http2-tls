@@ -10,9 +10,9 @@ data Settings = Settings
     -- ^ If the size of receiving data is less than or equal,
     --   the timeout is not reset.
     --   (All)
-    , settingReadBufferSize :: Int
+    , settingsReadBufferSize :: Int
     -- ^ When the size of a read buffer is lower than this limit, the buffer is thrown awany (and is eventually freed). Then a new buffer is allocated. (All)
-    , settingReadBufferLowerLimit :: Int
+    , settingsReadBufferLowerLimit :: Int
     -- ^  The allocation size for a read buffer.  (All)
     , settingsKeyLogger :: String -> IO ()
     -- ^ Key logger (defaults to none)
@@ -27,7 +27,7 @@ defaultSettings =
         { settingsTimeout = 30
         , settingsSendBufferSize = 4096
         , settingsSlowlorisSize = 50
-        , settingReadBufferSize = 16384
-        , settingReadBufferLowerLimit = 2048
+        , settingsReadBufferSize = 16384
+        , settingsReadBufferLowerLimit = 2048
         , settingsKeyLogger = \_ -> return ()
         }
