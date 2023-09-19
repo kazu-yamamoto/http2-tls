@@ -16,7 +16,13 @@ import qualified System.TimeManager as T
 import Network.HTTP2.TLS.Server.Settings
 
 allocConfigForServer
-    :: Settings -> T.Manager -> (ByteString -> IO ()) -> IO ByteString -> SockAddr -> SockAddr -> IO Config
+    :: Settings
+    -> T.Manager
+    -> (ByteString -> IO ())
+    -> IO ByteString
+    -> SockAddr
+    -> SockAddr
+    -> IO Config
 allocConfigForServer Settings{..} mgr send recv mysa peersa = do
     buf <- mallocBytes settingsSendBufferSize
     recvN <- makeRecvN "" recv
@@ -37,8 +43,8 @@ allocConfigForServer Settings{..} mgr send recv mysa peersa = do
 freeConfigForServer :: Config -> IO ()
 freeConfigForServer conf = free $ confWriteBuffer conf
 
-
-allocConfigForClient :: (ByteString -> IO ()) -> IO ByteString -> SockAddr -> SockAddr -> IO Config
+allocConfigForClient
+    :: (ByteString -> IO ()) -> IO ByteString -> SockAddr -> SockAddr -> IO Config
 allocConfigForClient send recv mysa peersa = do
     let wbufsiz = 4096 -- fixme
     buf <- mallocBytes wbufsiz

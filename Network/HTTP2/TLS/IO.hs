@@ -96,6 +96,7 @@ sendTLS ctx = sendData ctx . LBS.fromStrict
 sendManyTLS :: Context -> [ByteString] -> IO ()
 sendManyTLS ctx = sendData ctx . LBS.fromChunks
 
+{- FOURMOLU_DISABLE -}
 -- TLS version of recv (decrypting) without a cache.
 recvTLS :: Context -> IO ByteString
 recvTLS ctx = E.handle onEOF $ recvData ctx
@@ -108,6 +109,7 @@ recvTLS ctx = E.handle onEOF $ recvData ctx
 #endif
         | Just ioe <- E.fromException e, isEOFError ioe = return ""
         | otherwise = E.throwIO e
+{- FOURMOLU_ENABLE -}
 
 ----------------------------------------------------------------
 

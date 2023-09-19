@@ -36,8 +36,8 @@ import qualified UnliftIO.Exception as E
 
 import Network.HTTP2.TLS.Client.Settings
 import Network.HTTP2.TLS.Config
-import Network.HTTP2.TLS.Internal (gclose)
 import Network.HTTP2.TLS.IO
+import Network.HTTP2.TLS.Internal (gclose)
 import qualified Network.HTTP2.TLS.Server.Settings as Server
 import Network.HTTP2.TLS.Supported
 
@@ -155,8 +155,8 @@ getClientParams Settings{..} serverName alpn =
                 (\_ _ _ -> return ValidationCachePass)
                 (\_ _ _ -> return ())
     validateCert
-         | settingsValidateCert = validateDefault
-         | otherwise = \_ _ _ _ -> return []
+        | settingsValidateCert = validateDefault
+        | otherwise = \_ _ _ _ -> return []
     debug =
         def
             { debugKeyLogger = settingsKeyLogger
