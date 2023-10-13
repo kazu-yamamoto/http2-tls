@@ -36,13 +36,27 @@ library
     build-depends:
         base >=4.9 && <5,
         bytestring,
-        crypton-x509-store,
-        crypton-x509-validation,
         data-default-class,
         http2 >= 4.2.0,
         network,
         network-run >=0.2.6,
         recv >=0.1.0,
         time-manager,
-        tls >=1.7.0,
         unliftio
+
+    -- tls 1.7 starts using the crypton- forks of the x509-* packages
+    if flag(crypton)
+      build-depends:
+          tls >=1.7.0,
+          crypton-x509-store,
+          crypton-x509-validation
+    else
+      build-depends:
+          tls <1.7,
+          x509-store,
+          x509-validation
+
+Flag crypton
+    description: Use the crypton-x509-* package family instead of x509-*
+    default: True
+    manual: False
