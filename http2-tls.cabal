@@ -42,7 +42,7 @@ library
         http2 >= 4.2.0,
         network,
         network-run >=0.2.6,
-        recv,
+        recv >=0.1.0,
         time-manager,
         tls >=1.7.0,
         unliftio
