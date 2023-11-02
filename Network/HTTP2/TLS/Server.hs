@@ -27,12 +27,19 @@ module Network.HTTP2.TLS.Server (
     recv,
     mySockAddr,
     peerSockAddr,
+
+    -- * Internal
+    runIO,
+    Stream,
+    ServerIO (..),
 ) where
 
 import Data.ByteString (ByteString)
 import Data.Default.Class (def)
 import Network.HTTP2.Server (Server)
 import qualified Network.HTTP2.Server as H2Server
+import Network.HTTP2.Server.Internal (ServerIO, Stream)
+import qualified Network.HTTP2.Server.Internal as H2I
 import Network.Run.TCP.Timeout
 import Network.Socket (
     HostName,
@@ -89,6 +96,20 @@ run' settings server mgr IOBackend{..} =
         (allocConfigForServer settings mgr send recv mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> H2Server.run conf server)
+
+runIO
+    :: Settings
+    -> Credentials
+    -> HostName
+    -> PortNumber
+    -> (ServerIO -> IO (IO ()))
+    -> IO ()
+runIO settings creds host port action =
+    runTLS settings creds host port "h2" $ \mgr IOBackend{..} -> do
+        E.bracket
+            (allocConfigForServer settings mgr send recv mySockAddr peerSockAddr)
+            freeConfigForServer
+            (\conf -> H2I.runIO H2Server.defaultServerConfig conf action)
 
 ----------------------------------------------------------------
 

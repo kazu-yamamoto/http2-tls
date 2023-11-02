@@ -28,6 +28,7 @@ import Data.X509.Validation (validateDefault)
 import Network.HTTP2.Client (
     Client,
     ClientConfig (..),
+    defaultClientConfig,
  )
 import qualified Network.HTTP2.Client as H2Client
 import Network.Socket
@@ -96,10 +97,9 @@ run' schm serverName send recv mysa peersa client =
         (\conf -> H2Client.run cliconf conf client)
   where
     cliconf =
-        ClientConfig
+        defaultClientConfig
             { scheme = schm
             , authority = C8.pack serverName
-            , cacheLimit = 20
             }
 
 openTCP :: [AddrInfoFlag] -> HostName -> PortNumber -> IO Socket
