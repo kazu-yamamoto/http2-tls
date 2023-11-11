@@ -96,7 +96,7 @@ run' schm serverName send recv mysa peersa client =
         (\conf -> H2Client.run cliconf conf client)
   where
     cliconf =
-        ClientConfig
+        H2Client.defaultClientConfig
             { scheme = schm
             , authority = C8.pack serverName
             , cacheLimit = 20
