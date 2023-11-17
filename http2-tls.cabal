@@ -37,7 +37,7 @@ library
         base >=4.9 && <5,
         bytestring,
         data-default-class,
-        http2 >= 4.2.0,
+        http2 >= 4.3.0,
         network,
         network-run >=0.2.6,
         recv >=0.1.0,

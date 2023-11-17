@@ -95,7 +95,7 @@ run' settings server mgr IOBackend{..} =
     E.bracket
         (allocConfigForServer settings mgr send recv mySockAddr peerSockAddr)
         freeConfigForServer
-        (\conf -> H2Server.run conf server)
+        (\conf -> H2Server.run H2Server.defaultServerConfig conf server)
 
 runIO
     :: Settings
