@@ -19,6 +19,9 @@ module Network.HTTP2.TLS.Server (
     settingsReadBufferSize,
     settingsReadBufferLowerLimit,
     settingsKeyLogger,
+    settingsNumberOfWorkers,
+    settingsConcurrentStreams,
+    settingsWindowSize,
 
     -- * IO backend
     IOBackend,
@@ -36,7 +39,13 @@ module Network.HTTP2.TLS.Server (
 
 import Data.ByteString (ByteString)
 import Data.Default.Class (def)
-import Network.HTTP2.Server (Server)
+import Network.HTTP2.Server (
+    Server,
+    concurrentStreams,
+    defaultServerConfig,
+    numberOfWorkers,
+    windowSize,
+ )
 import qualified Network.HTTP2.Server as H2Server
 import Network.HTTP2.Server.Internal (ServerIO, Stream)
 import qualified Network.HTTP2.Server.Internal as H2I
@@ -91,11 +100,18 @@ runH2C settings@Settings{..} host port server =
         run' settings server mgr iobackend
 
 run' :: Settings -> Server -> T.Manager -> IOBackend -> IO ()
-run' settings server mgr IOBackend{..} =
+run' settings@Settings{..} server mgr IOBackend{..} =
     E.bracket
         (allocConfigForServer settings mgr send recv mySockAddr peerSockAddr)
         freeConfigForServer
-        (\conf -> H2Server.run H2Server.defaultServerConfig conf server)
+        (\conf -> H2Server.run sconf conf server)
+  where
+    sconf =
+        defaultServerConfig
+            { numberOfWorkers = settingsNumberOfWorkers
+            , concurrentStreams = settingsConcurrentStreams
+            , windowSize = settingsWindowSize
+            }
 
 runIO
     :: Settings
@@ -104,12 +120,19 @@ runIO
     -> PortNumber
     -> (ServerIO -> IO (IO ()))
     -> IO ()
-runIO settings creds host port action =
+runIO settings@Settings{..} creds host port action =
     runTLS settings creds host port "h2" $ \mgr IOBackend{..} -> do
         E.bracket
             (allocConfigForServer settings mgr send recv mySockAddr peerSockAddr)
             freeConfigForServer
-            (\conf -> H2I.runIO H2Server.defaultServerConfig conf action)
+            (\conf -> H2I.runIO sconf conf action)
+  where
+    sconf =
+        defaultServerConfig
+            { numberOfWorkers = settingsNumberOfWorkers
+            , concurrentStreams = settingsConcurrentStreams
+            , windowSize = settingsWindowSize
+            }
 
 ----------------------------------------------------------------
 

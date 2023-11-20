@@ -1,5 +1,12 @@
 module Network.HTTP2.TLS.Server.Settings where
 
+import Network.HTTP2.Server (
+    concurrentStreams,
+    defaultServerConfig,
+    numberOfWorkers,
+    windowSize,
+ )
+
 -- Server settings type.
 data Settings = Settings
     { settingsTimeout :: Int
@@ -33,6 +40,21 @@ data Settings = Settings
     -- ^ Key logger (defaults to none)
     --
     -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable. The default is do nothing.
+    , settingsNumberOfWorkers :: Int
+    -- ^ The number of workers (H2 and H2c)
+    --
+    -- >>> settingsNumberOfWorkers defaultSettings
+    -- 8
+    , settingsConcurrentStreams :: Int
+    -- ^ The maximum number of incoming streams on the net (H2 and H2c)
+    --
+    -- >>> settingsConcurrentStreams defaultSettings
+    -- 64
+    , settingsWindowSize :: Int
+    -- ^ The window size of incoming streams (H2 and H2c)
+    --
+    -- >>> settingsWindowSize defaultSettings
+    -- 1048575
     }
 
 -- | Default settings.
@@ -45,4 +67,7 @@ defaultSettings =
         , settingsReadBufferSize = 16384
         , settingsReadBufferLowerLimit = 2048
         , settingsKeyLogger = \_ -> return ()
+        , settingsNumberOfWorkers = numberOfWorkers defaultServerConfig
+        , settingsConcurrentStreams = concurrentStreams defaultServerConfig
+        , settingsWindowSize = windowSize defaultServerConfig
         }
