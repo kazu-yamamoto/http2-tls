@@ -36,21 +36,21 @@ library
     ghc-options:        -Wall
     build-depends:
         base >=4.9 && <5,
-        bytestring >= 0.11.5 && < 0.12,
+        bytestring >= 0.10 && < 0.12,
         http2 >=5.0 && < 5.1,
-        data-default-class >= 0.1.2 && < 0.2,
+        data-default-class >= 0.1 && < 0.2,
         network >= 3.1.4 && < 3.2,
         time-manager >= 0.0.1 && < 0.1,
-        unliftio >= 0.2.25 && < 0.3,
+        unliftio >= 0.2 && < 0.3,
         network-run >= 0.2.6 && < 0.3,
         recv >= 0.1.0 && < 0.2,
-        tls >= 1.9.0 && < 1.10
+        tls >= 1.9 && < 1.10
 
     if flag(crypton)
         build-depends:
-            tls >=1.7.0,
-            crypton-x509-store >= 1.6.9 && < 1.7,
-            crypton-x509-validation >= 1.6.12 && < 1.7
+            tls >=1.9,
+            crypton-x509-store >= 1.6 && < 1.7,
+            crypton-x509-validation >= 1.6 && < 1.7
 
     else
         build-depends:
