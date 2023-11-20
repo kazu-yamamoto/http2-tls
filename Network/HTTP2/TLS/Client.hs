@@ -19,6 +19,9 @@ module Network.HTTP2.TLS.Client (
     settingsValidateCert,
     settingsCAStore,
     settingsAddrInfoFlags,
+    settingsCacheLimit,
+    settingsConcurrentStreams,
+    settingsWindowSize,
 ) where
 
 import Data.ByteString (ByteString)
@@ -68,21 +71,22 @@ runTLS settings serverName port alpn action =
 run :: Settings -> HostName -> PortNumber -> Client a -> IO a
 run settings serverName port client =
     runTLS settings serverName port "h2" $ \ctx mysa peersa ->
-        run' "https" serverName (sendTLS ctx) (recvTLS ctx) mysa peersa client
+        run' settings "https" serverName (sendTLS ctx) (recvTLS ctx) mysa peersa client
 
 -- | Running an HTTP\/2 client over TCP.
-runH2C :: HostName -> PortNumber -> Client a -> IO a
-runH2C serverName port client =
+runH2C :: Settings -> HostName -> PortNumber -> Client a -> IO a
+runH2C settings serverName port client =
     E.bracket open close $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
         recv <- mkRecvTCP Server.defaultSettings sock
-        run' "http" serverName (sendTCP sock) recv mysa peersa client
+        run' settings "http" serverName (sendTCP sock) recv mysa peersa client
   where
     open = openTCP (settingsAddrInfoFlags defaultSettings) serverName port
 
 run'
-    :: ByteString
+    :: Settings
+    -> ByteString
     -> HostName
     -> (ByteString -> IO ())
     -> IO ByteString
@@ -90,7 +94,7 @@ run'
     -> SockAddr
     -> Client a
     -> IO a
-run' schm serverName send recv mysa peersa client =
+run' Settings{..} schm serverName send recv mysa peersa client =
     E.bracket
         (allocConfigForClient send recv mysa peersa)
         freeConfigForClient
@@ -100,6 +104,9 @@ run' schm serverName send recv mysa peersa client =
         defaultClientConfig
             { scheme = schm
             , authority = C8.pack serverName
+            , cacheLimit = settingsCacheLimit
+            , concurrentStreams = settingsConcurrentStreams
+            , windowSize = settingsWindowSize
             }
 
 openTCP :: [AddrInfoFlag] -> HostName -> PortNumber -> IO Socket
