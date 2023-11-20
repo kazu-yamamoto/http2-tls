@@ -1,5 +1,12 @@
 # Revision history for http2-tls
 
+## 0.2.0
+
+* Adding `runIO`.
+* Breaking change: `Client.runH2C` takes `Settings`.
+* Adding `settingsNumberOfWorkers`, `settingsConcurrentStreams` and `settingsWindowSize` to `Server.Settings`.
+* Adding `settingsCacheLimit`, `settingsConcurrentStreams` and `settingsWindowSize` to `Client.Settings`.
+
 ## 0.1.0
 
 * Breaking chaange: `run` takes `Settings` as an argument.
