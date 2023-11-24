@@ -4,8 +4,8 @@
 
 * Adding `runIO`.
 * Breaking change: `Client.runH2C` takes `Settings`.
-* Adding `settingsNumberOfWorkers`, `settingsConcurrentStreams` and `settingsWindowSize` to `Server.Settings`.
-* Adding `settingsCacheLimit`, `settingsConcurrentStreams` and `settingsWindowSize` to `Client.Settings`.
+* Adding `settingsNumberOfWorkers`, `settingsConcurrentStreams`, `settingsConnectionWindowSize` and `settingsStreamWindowSize` to `Server.Settings`.
+* Adding `settingsCacheLimit`, `settingsConcurrentStreams`, `settingsConnectionWindowSize` and `settingsStreamWindowSize`` to `Client.Settings`.
 
 ## 0.1.0
 
