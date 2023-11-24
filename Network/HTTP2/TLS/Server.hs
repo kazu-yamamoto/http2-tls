@@ -21,7 +21,8 @@ module Network.HTTP2.TLS.Server (
     settingsKeyLogger,
     settingsNumberOfWorkers,
     settingsConcurrentStreams,
-    settingsWindowSize,
+    settingsConnectionWindowSize,
+    settingsStreamWindowSize,
 
     -- * IO backend
     IOBackend,
@@ -41,10 +42,12 @@ import Data.ByteString (ByteString)
 import Data.Default.Class (def)
 import Network.HTTP2.Server (
     Server,
-    concurrentStreams,
+    connectionWindowSize,
     defaultServerConfig,
+    initialWindowSize,
+    maxConcurrentStreams,
     numberOfWorkers,
-    windowSize,
+    settings,
  )
 import qualified Network.HTTP2.Server as H2Server
 import Network.HTTP2.Server.Internal (ServerIO, Stream)
@@ -100,17 +103,21 @@ runH2C settings@Settings{..} host port server =
         run' settings server mgr iobackend
 
 run' :: Settings -> Server -> T.Manager -> IOBackend -> IO ()
-run' settings@Settings{..} server mgr IOBackend{..} =
+run' settings0@Settings{..} server mgr IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings mgr send recv mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 mgr send recv mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> H2Server.run sconf conf server)
   where
     sconf =
         defaultServerConfig
             { numberOfWorkers = settingsNumberOfWorkers
-            , concurrentStreams = settingsConcurrentStreams
-            , windowSize = settingsWindowSize
+            , connectionWindowSize = settingsConnectionWindowSize
+            , settings =
+                (settings defaultServerConfig)
+                    { initialWindowSize = settingsStreamWindowSize
+                    , maxConcurrentStreams = Just settingsConcurrentStreams
+                    }
             }
 
 runIO
@@ -120,18 +127,22 @@ runIO
     -> PortNumber
     -> (ServerIO -> IO (IO ()))
     -> IO ()
-runIO settings@Settings{..} creds host port action =
-    runTLS settings creds host port "h2" $ \mgr IOBackend{..} -> do
+runIO settings0@Settings{..} creds host port action =
+    runTLS settings0 creds host port "h2" $ \mgr IOBackend{..} -> do
         E.bracket
-            (allocConfigForServer settings mgr send recv mySockAddr peerSockAddr)
+            (allocConfigForServer settings0 mgr send recv mySockAddr peerSockAddr)
             freeConfigForServer
             (\conf -> H2I.runIO sconf conf action)
   where
     sconf =
         defaultServerConfig
             { numberOfWorkers = settingsNumberOfWorkers
-            , concurrentStreams = settingsConcurrentStreams
-            , windowSize = settingsWindowSize
+            , connectionWindowSize = settingsConnectionWindowSize
+            , settings =
+                (settings defaultServerConfig)
+                    { initialWindowSize = settingsStreamWindowSize
+                    , maxConcurrentStreams = Just settingsConcurrentStreams
+                    }
             }
 
 ----------------------------------------------------------------

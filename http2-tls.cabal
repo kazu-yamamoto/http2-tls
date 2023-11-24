@@ -43,6 +43,7 @@ library
         time-manager >= 0.0.1 && < 0.1,
         unliftio >= 0.2 && < 0.3,
         network-run >= 0.2.6 && < 0.3,
+        network-control >= 0.0.2 && < 0.1,
         recv >= 0.1.0 && < 0.2,
         tls >= 1.9 && < 1.10
 

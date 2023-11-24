@@ -21,7 +21,8 @@ module Network.HTTP2.TLS.Client (
     settingsAddrInfoFlags,
     settingsCacheLimit,
     settingsConcurrentStreams,
-    settingsWindowSize,
+    settingsConnectionWindowSize,
+    settingsStreamWindowSize,
 ) where
 
 import Data.ByteString (ByteString)
@@ -32,6 +33,9 @@ import Network.HTTP2.Client (
     Client,
     ClientConfig (..),
     defaultClientConfig,
+    initialWindowSize,
+    maxConcurrentStreams,
+    settings,
  )
 import qualified Network.HTTP2.Client as H2Client
 import Network.Socket
@@ -105,8 +109,12 @@ run' Settings{..} schm serverName send recv mysa peersa client =
             { scheme = schm
             , authority = C8.pack serverName
             , cacheLimit = settingsCacheLimit
-            , concurrentStreams = settingsConcurrentStreams
-            , windowSize = settingsWindowSize
+            , connectionWindowSize = settingsConnectionWindowSize
+            , settings =
+                (settings defaultClientConfig)
+                    { initialWindowSize = settingsStreamWindowSize
+                    , maxConcurrentStreams = Just settingsConcurrentStreams
+                    }
             }
 
 openTCP :: [AddrInfoFlag] -> HostName -> PortNumber -> IO Socket

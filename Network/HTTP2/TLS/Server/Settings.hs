@@ -1,10 +1,9 @@
 module Network.HTTP2.TLS.Server.Settings where
 
+import Network.Control
 import Network.HTTP2.Server (
-    concurrentStreams,
     defaultServerConfig,
     numberOfWorkers,
-    windowSize,
  )
 
 -- Server settings type.
@@ -50,10 +49,15 @@ data Settings = Settings
     --
     -- >>> settingsConcurrentStreams defaultSettings
     -- 64
-    , settingsWindowSize :: Int
+    , settingsStreamWindowSize :: Int
     -- ^ The window size of incoming streams (H2 and H2c)
     --
-    -- >>> settingsWindowSize defaultSettings
+    -- >>> settingsStreamWindowSize defaultSettings
+    -- 262144
+    , settingsConnectionWindowSize :: Int
+    -- ^ The window size of a connection (H2 and H2c)
+    --
+    -- >>> settingsConnectionWindowSize defaultSettings
     -- 1048575
     }
 
@@ -68,6 +72,7 @@ defaultSettings =
         , settingsReadBufferLowerLimit = 2048
         , settingsKeyLogger = \_ -> return ()
         , settingsNumberOfWorkers = numberOfWorkers defaultServerConfig
-        , settingsConcurrentStreams = concurrentStreams defaultServerConfig
-        , settingsWindowSize = windowSize defaultServerConfig
+        , settingsConcurrentStreams = defaultMaxStreams
+        , settingsStreamWindowSize = defaultMaxStreamData
+        , settingsConnectionWindowSize = defaultMaxData
         }
