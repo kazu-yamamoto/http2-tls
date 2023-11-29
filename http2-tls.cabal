@@ -44,12 +44,13 @@ library
         unliftio >= 0.2 && < 0.3,
         network-run >= 0.2.6 && < 0.3,
         network-control >= 0.0.2 && < 0.1,
-        recv >= 0.1.0 && < 0.2,
-        tls >= 1.9 && < 1.10
+        recv >= 0.1.0 && < 0.2
 
     if flag(crypton)
         build-depends:
-            tls >=1.9,
+            -- If we raise the lower bound on @tls@, then the @crypton@ flag
+            -- becomes useless and we should remove it.
+            tls >=1.7 && < 1.10,
             crypton-x509-store >= 1.6 && < 1.7,
             crypton-x509-validation >= 1.6 && < 1.7
 
