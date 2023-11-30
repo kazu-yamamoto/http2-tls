@@ -8,6 +8,8 @@ module Network.HTTP2.TLS.Client (
     run,
     runH2C,
     Client,
+    ClientConfig,
+    defaultClientConfig,
     HostName,
     PortNumber,
     runTLS,
@@ -26,17 +28,12 @@ module Network.HTTP2.TLS.Client (
 ) where
 
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as C8
+import qualified Data.ByteString.Char8 as BS.C8
+import qualified Data.ByteString.UTF8 as BS.UTF8
 import Data.Default.Class (def)
+import Data.Maybe (fromMaybe)
 import Data.X509.Validation (validateDefault)
-import Network.HTTP2.Client (
-    Client,
-    ClientConfig (..),
-    defaultClientConfig,
-    initialWindowSize,
-    maxConcurrentStreams,
-    settings,
- )
+import Network.HTTP2.Client (Client, ClientConfig)
 import qualified Network.HTTP2.Client as H2Client
 import Network.Socket
 import Network.TLS hiding (HostName)
@@ -53,14 +50,15 @@ import Network.HTTP2.TLS.Supported
 
 -- | Running a TLS client.
 runTLS
-    :: Settings
+    :: ClientConfig
+    -> Settings
     -> HostName
     -> PortNumber
     -> ByteString
     -- ^ ALPN
     -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
-runTLS settings serverName port alpn action =
+runTLS cliconf settings serverName port alpn action =
     E.bracket open gclose $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
@@ -68,54 +66,69 @@ runTLS settings serverName port alpn action =
             handshake ctx
             action ctx mysa peersa
   where
+    open :: IO Socket
     open = openTCP (settingsAddrInfoFlags settings) serverName port
-    params = getClientParams settings serverName alpn
+
+    -- TLS client parameters
+    params :: ClientParams
+    params =
+        getClientParams
+            settings
+            ( fromMaybe (H2Client.authority cliconf) $
+                settingsServerNameOverride settings
+            )
+            port
+            alpn
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
-run :: Settings -> HostName -> PortNumber -> Client a -> IO a
-run settings serverName port client =
-    runTLS settings serverName port "h2" $ \ctx mysa peersa ->
-        run' settings "https" serverName (sendTLS ctx) (recvTLS ctx) mysa peersa client
+run :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
+run cliconf settings serverName port client =
+    runTLS cliconf settings serverName port "h2" $ \ctx mysa peersa ->
+        run' cliconf' (sendTLS ctx) (recvTLS ctx) mysa peersa client
+  where
+    cliconf' :: ClientConfig
+    cliconf' = cliconf{H2Client.scheme = "https"}
 
 -- | Running an HTTP\/2 client over TCP.
-runH2C :: Settings -> HostName -> PortNumber -> Client a -> IO a
-runH2C settings serverName port client =
+runH2C :: ClientConfig -> HostName -> PortNumber -> Client a -> IO a
+runH2C cliconf serverName port client =
     E.bracket open close $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
         recv <- mkRecvTCP Server.defaultSettings sock
-        run' settings "http" serverName (sendTCP sock) recv mysa peersa client
+        run' cliconf' (sendTCP sock) recv mysa peersa client
   where
     open = openTCP (settingsAddrInfoFlags defaultSettings) serverName port
 
+    cliconf' :: ClientConfig
+    cliconf' = cliconf{H2Client.scheme = "http"}
+
 run'
-    :: Settings
-    -> ByteString
-    -> HostName
+    :: ClientConfig
     -> (ByteString -> IO ())
     -> IO ByteString
     -> SockAddr
     -> SockAddr
     -> Client a
     -> IO a
-run' Settings{..} schm serverName send recv mysa peersa client =
+run' cliconf send recv mysa peersa client =
     E.bracket
         (allocConfigForClient send recv mysa peersa)
         freeConfigForClient
         (\conf -> H2Client.run cliconf conf client)
-  where
-    cliconf =
-        defaultClientConfig
-            { scheme = schm
-            , authority = C8.pack serverName
-            , cacheLimit = settingsCacheLimit
-            , connectionWindowSize = settingsConnectionWindowSize
-            , settings =
-                (settings defaultClientConfig)
-                    { initialWindowSize = settingsStreamWindowSize
-                    , maxConcurrentStreams = Just settingsConcurrentStreams
-                    }
-            }
+
+defaultClientConfig :: Settings -> ClientConfig
+defaultClientConfig Settings{..} =
+    H2Client.defaultClientConfig
+        { H2Client.scheme = "https"
+        , H2Client.cacheLimit = settingsCacheLimit
+        , H2Client.connectionWindowSize = settingsConnectionWindowSize
+        , H2Client.settings =
+            (H2Client.settings $ H2Client.defaultClientConfig)
+                { H2Client.initialWindowSize = settingsStreamWindowSize
+                , H2Client.maxConcurrentStreams = Just settingsConcurrentStreams
+                }
+        }
 
 openTCP :: [AddrInfoFlag] -> HostName -> PortNumber -> IO Socket
 openTCP flags h p = do
@@ -138,12 +151,19 @@ makeAddrInfo flags nh p = do
 
 getClientParams
     :: Settings
-    -> HostName
+    -> ByteString
+    -- ^ Server name (for TLS SNI)
+    -> PortNumber
+    -- ^ Port number
+    -- This is not used for validation, but improves caching; see documentation of
+    -- [ServiceID](https://hackage.haskell.org/package/x509-validation-1.6.12/docs/Data-X509-Validation.html#t:ServiceID).
     -> ByteString
     -- ^ ALPN
     -> ClientParams
-getClientParams Settings{..} serverName alpn =
-    (defaultParamsClient serverName "")
+getClientParams Settings{..} serverName port alpn =
+    -- RFC 4366 mandates UTF-8 for SNI
+    -- <https://datatracker.ietf.org/doc/html/rfc4366#section-3.1>
+    (defaultParamsClient (BS.UTF8.toString serverName) (BS.C8.pack $ show port))
         { clientSupported = supported
         , clientWantSessionResume = Nothing
         , clientUseServerNameIndication = True
