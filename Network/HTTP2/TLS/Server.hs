@@ -34,6 +34,7 @@ module Network.HTTP2.TLS.Server (
 
     -- * Internal
     runIO,
+    runIOH2C,
     Stream,
     ServerIO (..),
 ) where
@@ -127,12 +128,17 @@ runIO
     -> PortNumber
     -> (ServerIO -> IO (IO ()))
     -> IO ()
-runIO settings0@Settings{..} creds host port action =
-    runTLS settings0 creds host port "h2" $ \mgr IOBackend{..} -> do
-        E.bracket
-            (allocConfigForServer settings0 mgr send recv mySockAddr peerSockAddr)
-            freeConfigForServer
-            (\conf -> H2I.runIO sconf conf action)
+runIO settings creds host port action =
+    runTLS settings creds host port "h2" $ \mgr iobackend ->
+        runIO' settings action mgr iobackend
+
+runIO'
+    :: Settings -> (ServerIO -> IO (IO ())) -> T.Manager -> IOBackend -> IO ()
+runIO' settings0@Settings{..} action mgr IOBackend{..} =
+    E.bracket
+        (allocConfigForServer settings0 mgr send recv mySockAddr peerSockAddr)
+        freeConfigForServer
+        (\conf -> H2I.runIO sconf conf action)
   where
     sconf =
         defaultServerConfig
@@ -144,6 +150,14 @@ runIO settings0@Settings{..} creds host port action =
                     , maxConcurrentStreams = Just settingsConcurrentStreams
                     }
             }
+
+runIOH2C
+    :: Settings -> HostName -> PortNumber -> (ServerIO -> IO (IO ())) -> IO ()
+runIOH2C settings0@Settings{..} host port action =
+    runTCPServer settingsTimeout (Just host) (show port) $ \mgr th sock -> do
+        iobackend0 <- tcpIOBackend settings0 sock
+        let iobackend = timeoutIOBackend th settings0 iobackend0
+        runIO' settings0 action mgr iobackend
 
 ----------------------------------------------------------------
 
