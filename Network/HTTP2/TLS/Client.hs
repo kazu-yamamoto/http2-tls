@@ -8,11 +8,16 @@ module Network.HTTP2.TLS.Client (
     run,
     runH2C,
     Client,
-    ClientConfig,
-    defaultClientConfig,
     HostName,
     PortNumber,
     runTLS,
+
+    -- ** Generalized API
+    ClientConfig,
+    defaultClientConfig,
+    runWithConfig,
+    runH2CWithConfig,
+    runTLSWithConfig,
 
     -- * Settings
     Settings,
@@ -47,9 +52,32 @@ import qualified Network.HTTP2.TLS.Server.Settings as Server
 import Network.HTTP2.TLS.Supported
 
 ----------------------------------------------------------------
+-- Default API
+
+run :: Settings -> HostName -> PortNumber -> Client a -> IO a
+run settings serverName port client =
+    runWithConfig (defaultClientConfig settings) settings serverName port client
+
+runTLS
+    :: Settings
+    -> HostName
+    -> PortNumber
+    -> ByteString
+    -- ^ ALPN
+    -> (Context -> SockAddr -> SockAddr -> IO a)
+    -> IO a
+runTLS settings serverName port alpn action =
+    runTLSWithConfig (defaultClientConfig settings) settings serverName port alpn action
+
+runH2C :: Settings -> HostName -> PortNumber -> Client a -> IO a
+runH2C settings serverName port client =
+   runH2CWithConfig (defaultClientConfig settings) serverName port client
+
+----------------------------------------------------------------
+-- Generalized API
 
 -- | Running a TLS client.
-runTLS
+runTLSWithConfig
     :: ClientConfig
     -> Settings
     -> HostName
@@ -58,7 +86,7 @@ runTLS
     -- ^ ALPN
     -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
-runTLS cliconf settings serverName port alpn action =
+runTLSWithConfig cliconf settings serverName port alpn action =
     E.bracket open gclose $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
@@ -81,17 +109,17 @@ runTLS cliconf settings serverName port alpn action =
             alpn
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
-run :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
-run cliconf settings serverName port client =
-    runTLS cliconf settings serverName port "h2" $ \ctx mysa peersa ->
+runWithConfig :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
+runWithConfig cliconf settings serverName port client =
+    runTLSWithConfig cliconf settings serverName port "h2" $ \ctx mysa peersa ->
         run' cliconf' (sendTLS ctx) (recvTLS ctx) mysa peersa client
   where
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "https"}
 
 -- | Running an HTTP\/2 client over TCP.
-runH2C :: ClientConfig -> HostName -> PortNumber -> Client a -> IO a
-runH2C cliconf serverName port client =
+runH2CWithConfig :: ClientConfig -> HostName -> PortNumber -> Client a -> IO a
+runH2CWithConfig cliconf serverName port client =
     E.bracket open close $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
