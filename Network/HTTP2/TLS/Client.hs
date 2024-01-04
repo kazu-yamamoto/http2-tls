@@ -34,6 +34,7 @@ module Network.HTTP2.TLS.Client (
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS.C8
+import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.UTF8 as BS.UTF8
 import Data.Default.Class (def)
 import Data.Maybe (fromMaybe)
@@ -56,7 +57,12 @@ import Network.HTTP2.TLS.Supported
 
 run :: Settings -> HostName -> PortNumber -> Client a -> IO a
 run settings serverName port client =
-    runWithConfig (defaultClientConfig settings) settings serverName port client
+    runWithConfig
+        (defaultClientConfig settings serverName)
+        settings
+        serverName
+        port
+        client
 
 runTLS
     :: Settings
@@ -67,11 +73,21 @@ runTLS
     -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
 runTLS settings serverName port alpn action =
-    runTLSWithConfig (defaultClientConfig settings) settings serverName port alpn action
+    runTLSWithConfig
+        (defaultClientConfig settings serverName)
+        settings
+        serverName
+        port
+        alpn
+        action
 
 runH2C :: Settings -> HostName -> PortNumber -> Client a -> IO a
 runH2C settings serverName port client =
-   runH2CWithConfig (defaultClientConfig settings) serverName port client
+    runH2CWithConfig
+        (defaultClientConfig settings serverName)
+        serverName
+        port
+        client
 
 ----------------------------------------------------------------
 -- Generalized API
@@ -109,7 +125,8 @@ runTLSWithConfig cliconf settings serverName port alpn action =
             alpn
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
-runWithConfig :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
+runWithConfig
+    :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
 runWithConfig cliconf settings serverName port client =
     runTLSWithConfig cliconf settings serverName port "h2" $ \ctx mysa peersa ->
         run' cliconf' (sendTLS ctx) (recvTLS ctx) mysa peersa client
@@ -145,10 +162,15 @@ run' cliconf send recv mysa peersa client =
         freeConfigForClient
         (\conf -> H2Client.run cliconf conf client)
 
-defaultClientConfig :: Settings -> ClientConfig
-defaultClientConfig Settings{..} =
+defaultClientConfig
+    :: Settings
+    -> HostName
+    -- ^ Authority
+    -> ClientConfig
+defaultClientConfig Settings{..} serverName =
     H2Client.defaultClientConfig
         { H2Client.scheme = "https"
+        , H2Client.authority = C8.pack serverName
         , H2Client.cacheLimit = settingsCacheLimit
         , H2Client.connectionWindowSize = settingsConnectionWindowSize
         , H2Client.settings =
