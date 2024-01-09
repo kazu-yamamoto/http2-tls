@@ -1,5 +1,6 @@
 module Network.HTTP2.TLS.Client.Settings where
 
+import Data.ByteString (ByteString)
 import Data.X509.CertificateStore (CertificateStore)
 import Network.Socket
 
@@ -22,6 +23,15 @@ data Settings = Settings
     -- True
     , settingsCAStore :: CertificateStore
     -- ^ Certificate store used for validation. The default is 'mempty'. (TLS and H2)
+    , settingsServerNameOverride :: Maybe ByteString
+    -- ^ Server name override
+    --
+    -- By default, the server name (for TLS SNI) is set based on the
+    -- 'Network.HTTP2.Client.authority', corresponding to the HTTP2
+    -- @:authority@ pseudo-header. In rare circumstances these two values should
+    -- be different (for example in the case of domain fronting);
+    -- 'settingsServerNameOverride' can be used to give SNI a different value
+    -- than @:authority@.
     , settingsAddrInfoFlags :: [AddrInfoFlag]
     -- ^ Flags that control the querying behaviour of @getAddrInfo@. (TLS and H2)
     --
@@ -56,6 +66,7 @@ defaultSettings =
         { settingsKeyLogger = \_ -> return ()
         , settingsValidateCert = True
         , settingsCAStore = mempty
+        , settingsServerNameOverride = Nothing
         , settingsAddrInfoFlags = []
         , settingsCacheLimit = cacheLimit defaultClientConfig
         , settingsConcurrentStreams = defaultMaxStreams
