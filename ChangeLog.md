@@ -1,5 +1,11 @@
 # Revision history for http2-tls
 
+## 0.2.1
+
+* Adding runIOH2C.
+* Adding runWithConfig, runH2CWithConfig and runTLSWithConfig.
+  [#6](https://github.com/kazu-yamamoto/http2-tls/pull/6)
+
 ## 0.2.0
 
 * Adding `runIO`.
@@ -10,7 +16,7 @@
 ## 0.1.0
 
 * Breaking chaange: `run` takes `Settings` as an argument.
-  [#2](https://github.com/kazu-yamamoto/http2-tls/pull/2/)
+  [#2](https://github.com/kazu-yamamoto/http2-tls/pull/2)
 
 ## 0.0.1
 
