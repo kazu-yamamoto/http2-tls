@@ -34,8 +34,6 @@ module Network.HTTP2.TLS.Client (
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS.C8
-import qualified Data.ByteString.Char8 as C8
-import qualified Data.ByteString.UTF8 as BS.UTF8
 import Data.Default.Class (def)
 import Data.Maybe (fromMaybe)
 import Data.X509.Validation (validateDefault)
@@ -165,12 +163,11 @@ run' cliconf send recv mysa peersa client =
 defaultClientConfig
     :: Settings
     -> HostName
-    -- ^ Authority
     -> ClientConfig
 defaultClientConfig Settings{..} serverName =
     H2Client.defaultClientConfig
         { H2Client.scheme = "https"
-        , H2Client.authority = C8.pack serverName
+        , H2Client.authority = serverName
         , H2Client.cacheLimit = settingsCacheLimit
         , H2Client.connectionWindowSize = settingsConnectionWindowSize
         , H2Client.settings =
@@ -201,7 +198,7 @@ makeAddrInfo flags nh p = do
 
 getClientParams
     :: Settings
-    -> ByteString
+    -> HostName
     -- ^ Server name (for TLS SNI)
     -> PortNumber
     -- ^ Port number
@@ -213,7 +210,7 @@ getClientParams
 getClientParams Settings{..} serverName port alpn =
     -- RFC 4366 mandates UTF-8 for SNI
     -- <https://datatracker.ietf.org/doc/html/rfc4366#section-3.1>
-    (defaultParamsClient (BS.UTF8.toString serverName) (BS.C8.pack $ show port))
+    (defaultParamsClient serverName (BS.C8.pack $ show port))
         { clientSupported = supported
         , clientWantSessionResume = Nothing
         , clientUseServerNameIndication = True

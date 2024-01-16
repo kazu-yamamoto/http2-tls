@@ -1,6 +1,5 @@
 module Network.HTTP2.TLS.Client.Settings where
 
-import Data.ByteString (ByteString)
 import Data.X509.CertificateStore (CertificateStore)
 import Network.Socket
 
@@ -23,7 +22,7 @@ data Settings = Settings
     -- True
     , settingsCAStore :: CertificateStore
     -- ^ Certificate store used for validation. The default is 'mempty'. (TLS and H2)
-    , settingsServerNameOverride :: Maybe ByteString
+    , settingsServerNameOverride :: Maybe HostName
     -- ^ Server name override
     --
     -- By default, the server name (for TLS SNI) is set based on the
