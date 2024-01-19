@@ -9,12 +9,14 @@ module Network.HTTP2.TLS.Client (
     runH2C,
     Client,
     HostName,
+    Authority,
     PortNumber,
     runTLS,
 
     -- ** Generalized API
     ClientConfig,
     defaultClientConfig,
+    defaultAuthority,
     runWithConfig,
     runH2CWithConfig,
     runTLSWithConfig,
@@ -37,7 +39,7 @@ import qualified Data.ByteString.Char8 as BS.C8
 import Data.Default.Class (def)
 import Data.Maybe (fromMaybe)
 import Data.X509.Validation (validateDefault)
-import Network.HTTP2.Client (Client, ClientConfig)
+import Network.HTTP2.Client (Client, ClientConfig, Authority)
 import qualified Network.HTTP2.Client as H2Client
 import Network.Socket
 import Network.TLS hiding (HostName)
@@ -56,7 +58,7 @@ import Network.HTTP2.TLS.Supported
 run :: Settings -> HostName -> PortNumber -> Client a -> IO a
 run settings serverName port client =
     runWithConfig
-        (defaultClientConfig settings serverName)
+        (defaultClientConfig settings $ defaultAuthority serverName)
         settings
         serverName
         port
@@ -72,7 +74,7 @@ runTLS
     -> IO a
 runTLS settings serverName port alpn action =
     runTLSWithConfig
-        (defaultClientConfig settings serverName)
+        (defaultClientConfig settings $ defaultAuthority serverName)
         settings
         serverName
         port
@@ -82,7 +84,7 @@ runTLS settings serverName port alpn action =
 runH2C :: Settings -> HostName -> PortNumber -> Client a -> IO a
 runH2C settings serverName port client =
     runH2CWithConfig
-        (defaultClientConfig settings serverName)
+        (defaultClientConfig settings $ defaultAuthority serverName)
         serverName
         port
         client
@@ -162,12 +164,12 @@ run' cliconf send recv mysa peersa client =
 
 defaultClientConfig
     :: Settings
-    -> HostName
+    -> Authority
     -> ClientConfig
-defaultClientConfig Settings{..} serverName =
+defaultClientConfig Settings{..} auth =
     H2Client.defaultClientConfig
         { H2Client.scheme = "https"
-        , H2Client.authority = serverName
+        , H2Client.authority = auth
         , H2Client.cacheLimit = settingsCacheLimit
         , H2Client.connectionWindowSize = settingsConnectionWindowSize
         , H2Client.settings =
@@ -176,6 +178,22 @@ defaultClientConfig Settings{..} serverName =
                 , H2Client.maxConcurrentStreams = Just settingsConcurrentStreams
                 }
         }
+
+-- | Default authority
+--
+-- When we connect to a server, we can distinguish between three names, all of
+-- which may be different:
+--
+-- 1. The 'HostName', used for the DNS lookup to get the server's IP
+-- 2. The HTTP2 @:authority@ pseudo-header
+-- 3. The TLS SNI (Server Name Indicator).
+--    This is different from (2) only in exceptional circumstances, see
+--    'settingsServerNameOverride'.
+--
+-- In /most/ cases, however, all three names are identical, and so the default
+-- 'Authority' is simply equal to the 'ServerName'.
+defaultAuthority :: HostName -> Authority
+defaultAuthority = id
 
 openTCP :: [AddrInfoFlag] -> HostName -> PortNumber -> IO Socket
 openTCP flags h p = do
