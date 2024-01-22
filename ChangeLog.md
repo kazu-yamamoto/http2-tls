@@ -1,5 +1,11 @@
 # Revision history for http2-tls
 
+## 0.2.2
+
+* Reuse H2CLient.Authority
+  [#8](https://github.com/kazu-yamamoto/http2-tls/pull/8)
+* Using http2 v5.1
+
 ## 0.2.1
 
 * Adding runIOH2C.
