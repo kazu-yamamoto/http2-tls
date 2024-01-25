@@ -32,6 +32,7 @@ module Network.HTTP2.TLS.Client (
     settingsConcurrentStreams,
     settingsConnectionWindowSize,
     settingsStreamWindowSize,
+    settingsServerNameOverride,
 ) where
 
 import Data.ByteString (ByteString)
