@@ -1,6 +1,6 @@
 cabal-version: >=1.10
 name:          http2-tls
-version:       0.2.3
+version:       0.2.4
 license:       BSD3
 license-file:  LICENSE
 maintainer:    Kazu Yamamoto <kazu@iij.ad.jp>
@@ -51,7 +51,7 @@ library
         build-depends:
             -- If we raise the lower bound on @tls@, then the @crypton@ flag
             -- becomes useless and we should remove it.
-            tls >=1.7 && < 1.10,
+            tls >=1.7 && < 2.1,
             crypton-x509-store >= 1.6 && < 1.7,
             crypton-x509-validation >= 1.6 && < 1.7
 

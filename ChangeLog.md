@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
+## 0.2.4
+
+* Allowing tls v2.0.
+
 ## 0.2.3
 
 * Export `settingsServerNameOverride`
