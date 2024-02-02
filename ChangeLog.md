@@ -1,5 +1,10 @@
 # Revision history for http2-tls
 
+## 0.2.3
+
+* Export `settingsServerNameOverride`
+  [#9](https://github.com/kazu-yamamoto/http2-tls/pull/9)
+
 ## 0.2.2
 
 * Reuse H2CLient.Authority
