@@ -23,6 +23,7 @@ module Network.HTTP2.TLS.Server (
     settingsConcurrentStreams,
     settingsConnectionWindowSize,
     settingsStreamWindowSize,
+    settingsSessionManager,
 
     -- * IO backend
     IOBackend,
@@ -79,15 +80,15 @@ runTLS
     -- ^ ALPN
     -> (T.Manager -> IOBackend -> IO a)
     -> IO a
-runTLS settings@Settings{..} creds host port alpn action =
-    runTCPServer settingsTimeout (Just host) (show port) $ \mgr th sock -> do
+runTLS settings creds host port alpn action =
+    runTCPServer (settingsTimeout settings) (Just host) (show port) $ \mgr th sock -> do
         backend <- mkBackend settings sock
         E.bracket (contextNew backend params) bye $ \ctx -> do
             handshake ctx
             iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
             action mgr iobackend
   where
-    params = getServerParams creds alpn settingsKeyLogger
+    params = getServerParams settings creds alpn
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
 --   ALPN is "h2".
@@ -162,11 +163,11 @@ runIOH2C settings0@Settings{..} host port action =
 ----------------------------------------------------------------
 
 getServerParams
-    :: Credentials
+    :: Settings
+    -> Credentials
     -> ByteString
-    -> (String -> IO ())
     -> ServerParams
-getServerParams creds alpn keyLogger =
+getServerParams Settings{..} creds alpn =
     def
         { serverSupported = supported
         , serverShared = shared
@@ -177,7 +178,7 @@ getServerParams creds alpn keyLogger =
     shared =
         def
             { sharedCredentials = creds
-            --            , sharedSessionManager = undefined
+            , sharedSessionManager = settingsSessionManager
             }
     supported = strongSupported
     hooks =
@@ -186,7 +187,7 @@ getServerParams creds alpn keyLogger =
             }
     debug =
         def
-            { debugKeyLogger = keyLogger
+            { debugKeyLogger = settingsKeyLogger
             }
 
 selectALPN :: ByteString -> [ByteString] -> IO ByteString

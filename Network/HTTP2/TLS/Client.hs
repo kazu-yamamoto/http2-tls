@@ -40,7 +40,7 @@ import qualified Data.ByteString.Char8 as BS.C8
 import Data.Default.Class (def)
 import Data.Maybe (fromMaybe)
 import Data.X509.Validation (validateDefault)
-import Network.HTTP2.Client (Client, ClientConfig, Authority)
+import Network.HTTP2.Client (Authority, Client, ClientConfig)
 import qualified Network.HTTP2.Client as H2Client
 import Network.Socket
 import Network.TLS hiding (HostName)
@@ -242,6 +242,7 @@ getClientParams Settings{..} serverName port alpn =
         def
             { sharedValidationCache = validateCache
             , sharedCAStore = settingsCAStore
+            , sharedSessionManager = settingsSessionManager
             }
     supported = strongSupported
     hooks =

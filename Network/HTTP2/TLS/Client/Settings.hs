@@ -8,6 +8,7 @@ import Network.HTTP2.Client (
     cacheLimit,
     defaultClientConfig,
  )
+import Network.TLS (SessionManager, noSessionManager)
 
 -- Client settings type.
 data Settings = Settings
@@ -56,6 +57,8 @@ data Settings = Settings
     --
     -- >>> settingsConnectionWindowSize defaultSettings
     -- 1048575
+    , settingsSessionManager :: SessionManager
+    -- ^ TLS session manager (H2 and TLS)
     }
 
 -- | Default settings.
@@ -71,4 +74,5 @@ defaultSettings =
         , settingsConcurrentStreams = defaultMaxStreams
         , settingsStreamWindowSize = defaultMaxStreamData
         , settingsConnectionWindowSize = defaultMaxData
+        , settingsSessionManager = noSessionManager
         }
