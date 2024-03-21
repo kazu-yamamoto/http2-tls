@@ -33,6 +33,9 @@ module Network.HTTP2.TLS.Client (
     settingsConnectionWindowSize,
     settingsStreamWindowSize,
     settingsServerNameOverride,
+    settingsSessionManager,
+    settingsWantSessionResume,
+    settingsUseEarlyData,
 ) where
 
 import Data.ByteString (ByteString)
@@ -231,11 +234,12 @@ getClientParams Settings{..} serverName port alpn =
     -- <https://datatracker.ietf.org/doc/html/rfc4366#section-3.1>
     (defaultParamsClient serverName (BS.C8.pack $ show port))
         { clientSupported = supported
-        , clientWantSessionResume = Nothing
+        , clientWantSessionResume = settingsWantSessionResume
         , clientUseServerNameIndication = True
         , clientShared = shared
         , clientHooks = hooks
         , clientDebug = debug
+        , clientUseEarlyData = settingsUseEarlyData
         }
   where
     shared =
