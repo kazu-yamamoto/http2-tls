@@ -1,5 +1,10 @@
 # Revision history for http2-tls
 
+## 0.2.6
+
+* Introduce settingsOpenServerSocket.
+  [#10](https://github.com/kazu-yamamoto/http2-tls/pull/10)
+
 ## 0.2.5
 
 * Adding SessionManager to Settings.
