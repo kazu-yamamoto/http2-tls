@@ -24,6 +24,7 @@ module Network.HTTP2.TLS.Server (
     settingsConnectionWindowSize,
     settingsStreamWindowSize,
     settingsSessionManager,
+    settingsOpenServerSocket,
 
     -- * IO backend
     IOBackend,
@@ -81,7 +82,11 @@ runTLS
     -> (T.Manager -> IOBackend -> IO a)
     -> IO a
 runTLS settings creds host port alpn action =
-    runTCPServer (settingsTimeout settings) (Just host) (show port) $ \mgr th sock -> do
+    runTCPServerWithSocket
+        (settingsOpenServerSocket settings)
+        (settingsTimeout settings)
+        (Just host)
+        (show port) $ \mgr th sock -> do
         backend <- mkBackend settings sock
         E.bracket (contextNew backend params) bye $ \ctx -> do
             handshake ctx
@@ -99,7 +104,11 @@ run settings creds host port server =
 -- | Running an HTTP\/2 client over TCP.
 runH2C :: Settings -> HostName -> PortNumber -> Server -> IO ()
 runH2C settings@Settings{..} host port server =
-    runTCPServer settingsTimeout (Just host) (show port) $ \mgr th sock -> do
+    runTCPServerWithSocket
+        settingsOpenServerSocket
+        settingsTimeout
+        (Just host)
+        (show port) $ \mgr th sock -> do
         iobackend0 <- tcpIOBackend settings sock
         let iobackend = timeoutIOBackend th settings iobackend0
         run' settings server mgr iobackend
@@ -155,7 +164,11 @@ runIO' settings0@Settings{..} action mgr IOBackend{..} =
 runIOH2C
     :: Settings -> HostName -> PortNumber -> (ServerIO -> IO (IO ())) -> IO ()
 runIOH2C settings0@Settings{..} host port action =
-    runTCPServer settingsTimeout (Just host) (show port) $ \mgr th sock -> do
+    runTCPServerWithSocket
+        settingsOpenServerSocket
+        settingsTimeout
+        (Just host)
+        (show port) $ \mgr th sock -> do
         iobackend0 <- tcpIOBackend settings0 sock
         let iobackend = timeoutIOBackend th settings0 iobackend0
         runIO' settings0 action mgr iobackend

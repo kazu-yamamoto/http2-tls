@@ -5,6 +5,8 @@ import Network.HTTP2.Server (
     defaultServerConfig,
     numberOfWorkers,
  )
+import Network.Run.TCP.Timeout
+import Network.Socket
 import Network.TLS (SessionManager, noSessionManager)
 
 -- Server settings type.
@@ -62,6 +64,10 @@ data Settings = Settings
     -- 1048575
     , settingsSessionManager :: SessionManager
     -- ^ TLS session manager (H2 and TLS)
+    , settingsOpenServerSocket :: AddrInfo -> IO Socket
+    -- ^ Function to initialize the server socket
+    --
+    -- Defaults to 'openServerSocket'
     }
 
 -- | Default settings.
@@ -79,4 +85,5 @@ defaultSettings =
         , settingsStreamWindowSize = defaultMaxStreamData
         , settingsConnectionWindowSize = defaultMaxData
         , settingsSessionManager = noSessionManager
+        , settingsOpenServerSocket = openServerSocket
         }
