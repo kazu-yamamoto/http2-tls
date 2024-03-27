@@ -67,6 +67,8 @@ data Settings = Settings
     , settingsUseEarlyData :: Bool
     -- ^ Try to use 0-RTT (H2 and TLS)
     --
+    -- This is only supported for @tls >= 2.0@.
+    --
     -- >>> settingsUseEarlyData defaultSettings
     -- False
     }
