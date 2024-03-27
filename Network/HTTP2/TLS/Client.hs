@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -239,7 +240,12 @@ getClientParams Settings{..} serverName port alpn =
         , clientShared = shared
         , clientHooks = hooks
         , clientDebug = debug
+#if MIN_VERSION_tls(2,0,0)
         , clientUseEarlyData = settingsUseEarlyData
+#else
+        , clientEarlyData = Nothing
+#endif
+
         }
   where
     shared =
