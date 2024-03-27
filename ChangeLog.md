@@ -2,6 +2,7 @@
 
 ## 0.2.6
 
+* Defining `settingsWantSessionResume` and `settingsUseEarlyData`.
 * Introduce settingsOpenServerSocket.
   [#10](https://github.com/kazu-yamamoto/http2-tls/pull/10)
 
