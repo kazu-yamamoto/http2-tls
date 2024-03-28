@@ -39,11 +39,13 @@ data Settings = Settings
     -- >>> settingsReadBufferLowerLimit defaultSettings
     -- 2048
     , settingsKeyLogger :: String -> IO ()
-    -- ^ Key logger (defaults to none)
+    -- ^ Key logger.
     --
     -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable. The default is do nothing.
+    --
+    -- Default: do nothing
     , settingsNumberOfWorkers :: Int
-    -- ^ The number of workers (H2 and H2c)
+    -- ^ The number of workers. (H2 and H2c)
     --
     -- >>> settingsNumberOfWorkers defaultSettings
     -- 8
@@ -64,10 +66,12 @@ data Settings = Settings
     -- 1048575
     , settingsSessionManager :: SessionManager
     -- ^ TLS session manager (H2 and TLS)
-    , settingsOpenServerSocket :: AddrInfo -> IO Socket
-    -- ^ Function to initialize the server socket
     --
-    -- Defaults to 'openServerSocket'
+    -- Default: 'noSessionManager'
+    , settingsOpenServerSocket :: AddrInfo -> IO Socket
+    -- ^ Function to initialize the server socket (All)
+    --
+    -- Default: 'openServerSocket'
     , settingsEarlyDataSize :: Int
     -- ^ The max size of early data (0-RTT) to be accepted. (H2 and TLS)
     -- 0 means that early data is not accepted.

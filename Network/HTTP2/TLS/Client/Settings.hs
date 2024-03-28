@@ -15,16 +15,20 @@ data Settings = Settings
     { settingsKeyLogger :: String -> IO ()
     -- ^ Key logger (TLS and H2)
     --
-    -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable. Default is do nothing.
+    -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable.
+    --
+    -- Default: do nothing.
     , settingsValidateCert :: Bool
     -- ^ Should we validate TLS certificates? (TLS and H2)
     --
     -- >>> settingsValidateCert defaultSettings
     -- True
     , settingsCAStore :: CertificateStore
-    -- ^ Certificate store used for validation. The default is 'mempty'. (TLS and H2)
+    -- ^ Certificate store used for validation. (TLS and H2)
+    --
+    -- Default: 'mempty'.
     , settingsServerNameOverride :: Maybe HostName
-    -- ^ Server name override
+    -- ^ Server name override (H2)
     --
     -- By default, the server name (for TLS SNI) is set based on the
     -- 'Network.HTTP2.Client.authority', corresponding to the HTTP2
@@ -59,6 +63,8 @@ data Settings = Settings
     -- 1048575
     , settingsSessionManager :: SessionManager
     -- ^ TLS session manager (H2 and TLS)
+    --
+    -- Default: 'noSessionManager'
     , settingsWantSessionResume :: Maybe (SessionID, SessionData)
     -- ^ Try to resume a TLS session (H2 and TLS)
     --
