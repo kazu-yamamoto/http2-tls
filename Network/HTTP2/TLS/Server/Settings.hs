@@ -68,6 +68,12 @@ data Settings = Settings
     -- ^ Function to initialize the server socket
     --
     -- Defaults to 'openServerSocket'
+    , settingsEarlyDataSize :: Int
+    -- ^ The max size of early data (0-RTT) to be accepted. (H2 and TLS)
+    -- 0 means that early data is not accepted.
+    --
+    -- >>> settingsEarlyDataSize defaultSettings
+    -- 0
     }
 
 -- | Default settings.
@@ -86,4 +92,5 @@ defaultSettings =
         , settingsConnectionWindowSize = defaultMaxData
         , settingsSessionManager = noSessionManager
         , settingsOpenServerSocket = openServerSocket
+        , settingsEarlyDataSize = 0
         }

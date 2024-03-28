@@ -25,6 +25,7 @@ module Network.HTTP2.TLS.Server (
     settingsStreamWindowSize,
     settingsSessionManager,
     settingsOpenServerSocket,
+    settingsEarlyDataSize,
 
     -- * IO backend
     IOBackend,
@@ -189,6 +190,7 @@ getServerParams Settings{..} creds alpn =
         , serverShared = shared
         , serverHooks = hooks
         , serverDebug = debug
+        , serverEarlyDataSize = settingsEarlyDataSize
         }
   where
     shared =
