@@ -1,5 +1,11 @@
 # Revision history for http2-tls
 
+## 0.2.7
+
+* Compatibility with tls < 2.0
+  [#11](https://github.com/kazu-yamamoto/http2-tls/pull/11)
+* Defining `settingsEarlyDataSize`.
+
 ## 0.2.6
 
 * Defining `settingsWantSessionResume` and `settingsUseEarlyData`.
