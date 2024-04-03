@@ -18,6 +18,10 @@ source-repository head
 flag crypton
     description: Use the crypton-x509-* package family instead of x509-*
 
+flag devel
+    description: Development commands
+    default:     False
+
 library
     exposed-modules:
         Network.HTTP2.TLS.Client
@@ -36,27 +40,66 @@ library
     ghc-options:        -Wall
     build-depends:
         base >=4.9 && <5,
-        bytestring >= 0.10,
-        http2 >=5.1 && < 5.2,
-        data-default-class >= 0.1 && < 0.2,
-        network >= 3.1.4,
-        time-manager >= 0.0.1 && < 0.1,
-        unliftio >= 0.2 && < 0.3,
-        network-run >= 0.2.6 && < 0.3,
-        network-control >= 0.0.2 && < 0.1,
-        recv >= 0.1.0 && < 0.2,
-        utf8-string >= 1.0 && < 1.1
+        bytestring >=0.10,
+        http2 >=5.1 && <5.2,
+        data-default-class >=0.1 && <0.2,
+        network >=3.1.4,
+        time-manager >=0.0.1 && <0.1,
+        unliftio >=0.2 && <0.3,
+        network-run >=0.2.6 && <0.3,
+        network-control >=0.0.2 && <0.1,
+        recv >=0.1.0 && <0.2,
+        utf8-string >=1.0 && <1.1
 
     if flag(crypton)
         build-depends:
-            -- If we raise the lower bound on @tls@, then the @crypton@ flag
-            -- becomes useless and we should remove it.
-            tls >=1.7 && < 2.1,
-            crypton-x509-store >= 1.6 && < 1.7,
-            crypton-x509-validation >= 1.6 && < 1.7
+            tls >=1.7 && <2.1,
+            crypton-x509-store >=1.6 && <1.7,
+            crypton-x509-validation >=1.6 && <1.7
 
     else
         build-depends:
             tls <1.7,
             x509-store,
             x509-validation
+
+executable h2-client
+    main-is:            h2-client.hs
+    hs-source-dirs:     util
+    other-modules:      Client
+    default-language:   Haskell2010
+    default-extensions: Strict StrictData
+    ghc-options:        -Wall -threaded -rtsopts
+    build-depends:
+        base >=4.9 && <5,
+        async,
+        bytestring,
+        http-types,
+        http2,
+        http2-tls
+
+    if flag(devel)
+
+    else
+        buildable: False
+
+executable h2-server
+    main-is:            h2-server.hs
+    hs-source-dirs:     util
+    other-modules:      Server
+    default-language:   Haskell2010
+    default-extensions: Strict StrictData
+    ghc-options:        -Wall -threaded
+    build-depends:
+        base >=4.9 && <5,
+        bytestring,
+        crypton,
+        http-types,
+        http2,
+        http2-tls,
+        tls
+
+    if flag(devel)
+
+    else
+        buildable: False
