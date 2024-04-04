@@ -78,6 +78,7 @@ main = do
             defaultSettings
                 { settingsKeyLogger = keylog
                 , settingsSessionManager = sm
+                , settingsEarlyDataSize = 4096
                 }
         creds = Credentials [cred]
     run settings creds host (read port) server
