@@ -76,7 +76,8 @@ executable h2-client
         bytestring,
         http-types,
         http2,
-        http2-tls
+        http2-tls,
+        tls
 
     if flag(devel)
 
@@ -97,7 +98,8 @@ executable h2-server
         http-types,
         http2,
         http2-tls,
-        tls
+        tls,
+        tls-session-manager
 
     if flag(devel)
 

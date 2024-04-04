@@ -6,6 +6,7 @@ module Main (main) where
 
 import Network.HTTP2.TLS.Server
 import Network.TLS (Credentials (..), credentialLoadX509)
+import Network.TLS.SessionTicket
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
@@ -69,9 +70,14 @@ main = do
         [h, p] -> return (h, p)
         _ -> showUsageAndExit usage
     Right cred@(!_cc, !_priv) <- credentialLoadX509 optCertFile optKeyFile
+    sm <- newSessionTicketManager defaultConfig
     let keylog msg = case optKeyLogFile of
             Nothing -> return ()
             Just file -> appendFile file (msg ++ "\n")
-        settings = defaultSettings{settingsKeyLogger = keylog}
+        settings =
+            defaultSettings
+                { settingsKeyLogger = keylog
+                , settingsSessionManager = sm
+                }
         creds = Credentials [cred]
     run settings creds host (read port) server

@@ -3,8 +3,11 @@
 
 module Main where
 
+import Control.Monad
 import qualified Data.ByteString.Char8 as C8
+import Data.IORef
 import Network.HTTP2.TLS.Client
+import Network.TLS
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
@@ -31,7 +34,7 @@ defaultOptions =
         }
 
 usage :: String
-usage = "Usage: h2-client [OPTION] addr port"
+usage = "Usage: h2-client [OPTION] addr port [path]"
 
 options :: [OptDescr (Options -> Options)]
 options =
@@ -81,8 +84,9 @@ main = do
     (host, port, paths) <- case ips of
         [] -> showUsageAndExit usage
         _ : [] -> showUsageAndExit usage
-        h : p : [] -> return (h, p, ["/"])
-        h : p : ps -> return (h, p, C8.pack <$> ps)
+        h : p : [] -> return (h, read p, ["/"])
+        h : p : ps -> return (h, read p, C8.pack <$> ps)
+    ref <- newIORef Nothing
     let keylog msg = case optKeyLogFile of
             Nothing -> return ()
             Just file -> appendFile file (msg ++ "\n")
@@ -90,5 +94,29 @@ main = do
             defaultSettings
                 { settingsValidateCert = optValidate
                 , settingsKeyLogger = keylog
+                , settingsSessionManager = sessionRef ref
                 }
-    run settings host (read port) $ client paths
+    run settings host port $ client paths
+    when (optResumption || opt0RTT) $ do
+        mr <- readIORef ref
+        case mr of
+            Nothing -> do
+                putStrLn "No session data"
+                exitFailure
+            _ -> do
+                let settings2 =
+                        defaultSettings
+                            { settingsValidateCert = optValidate
+                            , settingsKeyLogger = keylog
+                            , settingsWantSessionResume = mr
+                            , settingsUseEarlyData = opt0RTT
+                            }
+                run settings2 host port $ client paths
+
+sessionRef :: IORef (Maybe (SessionID, SessionData)) -> SessionManager
+sessionRef ref =
+    noSessionManager
+        { sessionEstablish = \sid sdata -> do
+            writeIORef ref $ Just (sid, sdata)
+            return Nothing
+        }
