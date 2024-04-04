@@ -1,7 +1,9 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Main where
 
+import qualified Data.ByteString.Char8 as C8
 import Network.HTTP2.TLS.Client
 import System.Console.GetOpt
 import System.Environment
@@ -76,9 +78,11 @@ main :: IO ()
 main = do
     args <- getArgs
     (Options{..}, ips) <- clientOpts args
-    (host, port) <- case ips of
-        [h, p] -> return (h, p)
-        _ -> showUsageAndExit usage
+    (host, port, paths) <- case ips of
+        [] -> showUsageAndExit usage
+        _ : [] -> showUsageAndExit usage
+        h : p : [] -> return (h, p, ["/"])
+        h : p : ps -> return (h, p, C8.pack <$> ps)
     let keylog msg = case optKeyLogFile of
             Nothing -> return ()
             Just file -> appendFile file (msg ++ "\n")
@@ -87,4 +91,4 @@ main = do
                 { settingsValidateCert = optValidate
                 , settingsKeyLogger = keylog
                 }
-    run settings host (read port) client
+    run settings host (read port) $ client paths
