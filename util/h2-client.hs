@@ -96,7 +96,7 @@ main = do
                 , settingsKeyLogger = keylog
                 , settingsSessionManager = sessionRef ref
                 }
-    run settings host port $ client paths
+    run settings host port $ client optNumOfReqs paths
     when (optResumption || opt0RTT) $ do
         mr <- readIORef ref
         case mr of
@@ -111,7 +111,7 @@ main = do
                             , settingsWantSessionResume = mr
                             , settingsUseEarlyData = opt0RTT
                             }
-                run settings2 host port $ client paths
+                run settings2 host port $ client optNumOfReqs paths
 
 sessionRef :: IORef (Maybe (SessionID, SessionData)) -> SessionManager
 sessionRef ref =
