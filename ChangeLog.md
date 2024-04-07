@@ -1,5 +1,10 @@
 # Revision history for http2-tls
 
+## 0.2.8
+
+* Using the latest network-control.
+* Implementing util/h2-client and util/h2-server.
+
 ## 0.2.7
 
 * Compatibility with tls < 2.0
