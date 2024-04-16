@@ -46,7 +46,7 @@ library
         network >=3.1.4,
         time-manager >=0.0.1 && <0.1,
         unliftio >=0.2 && <0.3,
-        network-run >=0.2.6 && <0.3,
+        network-run >=0.2.8 && <0.3,
         network-control >=0.1 && <0.2,
         recv >=0.1.0 && <0.2,
         utf8-string >=1.0 && <1.1
