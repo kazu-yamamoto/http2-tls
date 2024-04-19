@@ -1,5 +1,10 @@
 # Revision history for http2-tls
 
+## 0.2.9
+
+* Using runTCPClient
+  [#13](https://github.com/kazu-yamamoto/http2-tls/pull/13)
+
 ## 0.2.8
 
 * Using the latest network-control.
