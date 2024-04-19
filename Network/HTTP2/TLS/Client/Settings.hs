@@ -37,10 +37,7 @@ data Settings = Settings
     -- 'settingsServerNameOverride' can be used to give SNI a different value
     -- than @:authority@.
     , settingsAddrInfoFlags :: [AddrInfoFlag]
-    -- ^ Flags that control the querying behaviour of @getAddrInfo@. (TLS and H2)
-    --
-    -- >>> settingsAddrInfoFlags defaultSettings
-    -- []
+    -- ^ Obsoleted.
     , settingsCacheLimit :: Int
     -- ^ How many pushed responses are contained in the cache (H2 and H2c)
     --

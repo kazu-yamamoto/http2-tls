@@ -49,11 +49,11 @@ import qualified Network.HTTP2.Client as H2Client
 import Network.Socket
 import Network.TLS hiding (HostName)
 import qualified UnliftIO.Exception as E
+import Network.Run.TCP
 
 import Network.HTTP2.TLS.Client.Settings
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
-import Network.HTTP2.TLS.Internal (gclose)
 import qualified Network.HTTP2.TLS.Server.Settings as Server
 import Network.HTTP2.TLS.Supported
 
@@ -108,16 +108,13 @@ runTLSWithConfig
     -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
 runTLSWithConfig cliconf settings serverName port alpn action =
-    E.bracket open gclose $ \sock -> do
+    runTCPClient serverName (show port) $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
         E.bracket (contextNew sock params) bye $ \ctx -> do
             handshake ctx
             action ctx mysa peersa
   where
-    open :: IO Socket
-    open = openTCP (settingsAddrInfoFlags settings) serverName port
-
     -- TLS client parameters
     params :: ClientParams
     params =
@@ -142,14 +139,12 @@ runWithConfig cliconf settings serverName port client =
 -- | Running an HTTP\/2 client over TCP.
 runH2CWithConfig :: ClientConfig -> HostName -> PortNumber -> Client a -> IO a
 runH2CWithConfig cliconf serverName port client =
-    E.bracket open close $ \sock -> do
+    runTCPClient serverName (show port) $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
         recv <- mkRecvTCP Server.defaultSettings sock
         run' cliconf' (sendTCP sock) recv mysa peersa client
   where
-    open = openTCP (settingsAddrInfoFlags defaultSettings) serverName port
-
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "http"}
 
@@ -199,23 +194,6 @@ defaultClientConfig Settings{..} auth =
 -- 'Authority' is simply equal to the 'ServerName'.
 defaultAuthority :: HostName -> Authority
 defaultAuthority = id
-
-openTCP :: [AddrInfoFlag] -> HostName -> PortNumber -> IO Socket
-openTCP flags h p = do
-    ai <- makeAddrInfo flags h p
-    sock <- openSocket ai
-    connect sock $ addrAddress ai
-    return sock
-
-makeAddrInfo :: [AddrInfoFlag] -> HostName -> PortNumber -> IO AddrInfo
-makeAddrInfo flags nh p = do
-    let hints =
-            defaultHints
-                { addrFlags = flags
-                , addrSocketType = Stream
-                }
-    let np = show p
-    head <$> getAddrInfo (Just hints) (Just nh) (Just np)
 
 ----------------------------------------------------------------
 
