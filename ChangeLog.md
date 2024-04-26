@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
+## 0.2.10
+
+* Allowing http2 v5.2
+
 ## 0.2.9
 
 * Using runTCPClient
