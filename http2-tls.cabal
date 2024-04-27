@@ -44,7 +44,7 @@ library
         http2 >=5.1 && <5.3,
         data-default-class >=0.1 && <0.2,
         network >=3.1.4,
-        time-manager >=0.0.1 && <0.1,
+        time-manager >=0.0.1 && <0.2,
         unliftio >=0.2 && <0.3,
         network-run >=0.2.8 && <0.3,
         network-control >=0.1 && <0.2,
