@@ -5,7 +5,10 @@ module Client where
 
 import Control.Concurrent.Async
 import qualified Control.Exception as E
+import Control.Monad (when)
 import qualified Data.ByteString.Char8 as C8
+import Data.CaseInsensitive (foldedCase)
+import Network.HTTP.Semantics
 import Network.HTTP.Types
 
 import Network.HTTP2.Client
@@ -25,5 +28,12 @@ client' n0 sendRequest path = loop n0
     loop n = do
         sendRequest req $ \rsp -> do
             print $ responseStatus rsp
-            getResponseBodyChunk rsp >>= C8.putStrLn
+            mapM_ (\(k, v) -> C8.putStrLn (foldedCase (tokenKey k) <> ": " <> v)) $
+                fst $
+                    responseHeaders
+                        rsp
+            consume rsp
         loop (n - 1)
+    consume rsp = do
+        x <- getResponseBodyChunk rsp
+        when (x /= "") $ consume rsp

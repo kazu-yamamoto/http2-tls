@@ -36,7 +36,9 @@ module Network.HTTP2.TLS.Client (
     settingsServerNameOverride,
     settingsSessionManager,
     settingsWantSessionResume,
+    settingsWantSessionResumeList,
     settingsUseEarlyData,
+    settingsOnServerFinished,
 ) where
 
 import Data.ByteString (ByteString)
@@ -111,9 +113,11 @@ runTLSWithConfig cliconf settings serverName port alpn action =
     runTCPClient serverName (show port) $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
-        E.bracket (contextNew sock params) bye $ \ctx -> do
-            handshake ctx
-            action ctx mysa peersa
+        ctx <- contextNew sock params
+        handshake ctx
+        r <- action ctx mysa peersa
+        bye ctx
+        return r
   where
     -- TLS client parameters
     params :: ClientParams
@@ -214,6 +218,7 @@ getClientParams Settings{..} serverName port alpn =
     (defaultParamsClient serverName (BS.C8.pack $ show port))
         { clientSupported = supported
         , clientWantSessionResume = settingsWantSessionResume
+        , clientWantSessionResumeList = settingsWantSessionResumeList
         , clientUseServerNameIndication = True
         , clientShared = shared
         , clientHooks = hooks
@@ -237,6 +242,7 @@ getClientParams Settings{..} serverName port alpn =
         def
             { onSuggestALPN = return $ Just [alpn]
             , onServerCertificate = validateCert
+            , onServerFinished = settingsOnServerFinished
             }
     validateCache
         | settingsValidateCert = def

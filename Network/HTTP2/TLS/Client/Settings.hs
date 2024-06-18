@@ -8,7 +8,13 @@ import Network.HTTP2.Client (
     cacheLimit,
     defaultClientConfig,
  )
-import Network.TLS (SessionData, SessionID, SessionManager, noSessionManager)
+import Network.TLS (
+    Information,
+    SessionData,
+    SessionID,
+    SessionManager,
+    noSessionManager,
+ )
 
 -- Client settings type.
 data Settings = Settings
@@ -67,6 +73,12 @@ data Settings = Settings
     --
     -- >>> settingsWantSessionResume defaultSettings
     -- Nothing
+    , settingsWantSessionResumeList :: [(SessionID, SessionData)]
+    -- ^ Try to resume a TLS session (H2 and TLS).
+    -- This takes precedence over 'settingsWantSessionResume'.
+    --
+    -- >>> settingsWantSessionResumeList defaultSettings
+    -- []
     , settingsUseEarlyData :: Bool
     -- ^ Try to use 0-RTT (H2 and TLS)
     --
@@ -74,6 +86,7 @@ data Settings = Settings
     --
     -- >>> settingsUseEarlyData defaultSettings
     -- False
+    , settingsOnServerFinished :: Information -> IO ()
     }
 
 -- | Default settings.
@@ -91,5 +104,7 @@ defaultSettings =
         , settingsConnectionWindowSize = defaultMaxData
         , settingsSessionManager = noSessionManager
         , settingsWantSessionResume = Nothing
+        , settingsWantSessionResumeList = []
         , settingsUseEarlyData = False
+        , settingsOnServerFinished = \_ -> return ()
         }
