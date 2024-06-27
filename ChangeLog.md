@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
+## 0.3.1
+
+* Providing `settingsWantSessionResumeList`.
+
 ## 0.3.0
 
 * Usuing network-run v0.3. This means that IPv6Only is set to sockets.
