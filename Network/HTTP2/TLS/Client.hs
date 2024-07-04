@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -48,10 +47,10 @@ import Data.Maybe (fromMaybe)
 import Data.X509.Validation (validateDefault)
 import Network.HTTP2.Client (Authority, Client, ClientConfig)
 import qualified Network.HTTP2.Client as H2Client
+import Network.Run.TCP
 import Network.Socket
 import Network.TLS hiding (HostName)
 import qualified UnliftIO.Exception as E
-import Network.Run.TCP
 
 import Network.HTTP2.TLS.Client.Settings
 import Network.HTTP2.TLS.Config
@@ -223,12 +222,7 @@ getClientParams Settings{..} serverName port alpn =
         , clientShared = shared
         , clientHooks = hooks
         , clientDebug = debug
-#if MIN_VERSION_tls(2,0,0)
         , clientUseEarlyData = settingsUseEarlyData
-#else
-        , clientEarlyData = Nothing
-#endif
-
         }
   where
     shared =
