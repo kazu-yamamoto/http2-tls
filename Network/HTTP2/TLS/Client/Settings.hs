@@ -8,6 +8,7 @@ import Network.HTTP2.Client (
     cacheLimit,
     defaultClientConfig,
  )
+import Network.Run.TCP (openClientSocket)
 import Network.TLS (
     Information,
     SessionData,
@@ -86,6 +87,10 @@ data Settings = Settings
     --
     -- >>> settingsUseEarlyData defaultSettings
     -- False
+    , settingsOpenClientSocket :: AddrInfo -> IO Socket
+    -- ^ Function to initialize the server socket (All)
+    --
+    -- Default: 'openClientSocket'
     , settingsOnServerFinished :: Information -> IO ()
     }
 
@@ -106,5 +111,6 @@ defaultSettings =
         , settingsWantSessionResume = Nothing
         , settingsWantSessionResumeList = []
         , settingsUseEarlyData = False
+        , settingsOpenClientSocket = openClientSocket
         , settingsOnServerFinished = \_ -> return ()
         }

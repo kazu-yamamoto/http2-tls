@@ -36,6 +36,7 @@ module Network.HTTP2.TLS.Client (
     settingsSessionManager,
     settingsWantSessionResume,
     settingsWantSessionResumeList,
+    settingsOpenClientSocket,
     settingsUseEarlyData,
     settingsOnServerFinished,
 ) where
@@ -108,8 +109,8 @@ runTLSWithConfig
     -- ^ ALPN
     -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
-runTLSWithConfig cliconf settings serverName port alpn action =
-    runTCPClient serverName (show port) $ \sock -> do
+runTLSWithConfig cliconf settings@Settings{..} serverName port alpn action =
+    runTCPClientWithSocket settingsOpenClientSocket serverName (show port) $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
         ctx <- contextNew sock params
@@ -123,9 +124,7 @@ runTLSWithConfig cliconf settings serverName port alpn action =
     params =
         getClientParams
             settings
-            ( fromMaybe (H2Client.authority cliconf) $
-                settingsServerNameOverride settings
-            )
+            (fromMaybe (H2Client.authority cliconf) $ settingsServerNameOverride)
             port
             alpn
 
