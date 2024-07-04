@@ -15,9 +15,6 @@ source-repository head
     type:     git
     location: https://github.com/kazu-yamamoto/http2-tls
 
-flag crypton
-    description: Use the crypton-x509-* package family instead of x509-*
-
 flag devel
     description: Development commands
     default:     False
@@ -41,6 +38,8 @@ library
     build-depends:
         base >=4.9 && <5,
         bytestring >=0.10,
+        crypton-x509-store >=1.6 && <1.7,
+        crypton-x509-validation >=1.6 && <1.7,
         data-default-class >=0.1 && <0.2,
         http2 >=5.1 && <5.3,
         network >=3.1.4,
@@ -48,20 +47,9 @@ library
         network-run >=0.3 && <0.4,
         recv >=0.1.0 && <0.2,
         time-manager >=0.0.1 && <0.2,
+        tls >=2.1 && <2.2,
         unliftio >=0.2 && <0.3,
         utf8-string >=1.0 && <1.1
-
-    if flag(crypton)
-        build-depends:
-            tls >=2.1 && <2.2,
-            crypton-x509-store >=1.6 && <1.7,
-            crypton-x509-validation >=1.6 && <1.7
-
-    else
-        build-depends:
-            tls <1.7,
-            x509-store,
-            x509-validation
 
 executable h2-client
     main-is:            h2-client.hs
