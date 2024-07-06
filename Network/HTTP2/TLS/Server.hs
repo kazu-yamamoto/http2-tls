@@ -4,11 +4,14 @@
 module Network.HTTP2.TLS.Server (
     -- * Runners
     run,
+    runWithSocket,
     runH2C,
+    runH2CWithSocket,
     Server,
     HostName,
     PortNumber,
     runTLS,
+    runTLSWithSocket,
 
     -- * Settings
     Settings,
@@ -60,6 +63,7 @@ import Network.Run.TCP.Timeout
 import Network.Socket (
     HostName,
     PortNumber,
+    Socket,
  )
 import Network.TLS hiding (HostName)
 import qualified System.TimeManager as T
@@ -83,11 +87,34 @@ runTLS
     -> (T.Manager -> IOBackend -> IO a)
     -> IO a
 runTLS settings creds host port alpn action =
-    runTCPServerWithSocket
-        (settingsOpenServerSocket settings)
+    runTCPServer
         (settingsTimeout settings)
         (Just host)
         (show port)
+        $ \mgr th sock -> do
+            backend <- mkBackend settings sock
+            E.bracket (contextNew backend params) bye $ \ctx -> do
+                handshake ctx
+                iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
+                action mgr iobackend
+  where
+    params = getServerParams settings creds alpn
+
+-- | Running a TLS client.
+--   'IOBackend' provides sending and receiving functions
+--   with timeout based on 'Settings'.
+runTLSWithSocket
+    :: Settings
+    -> Credentials
+    -> Socket
+    -> ByteString
+    -- ^ ALPN
+    -> (T.Manager -> IOBackend -> IO a)
+    -> IO a
+runTLSWithSocket settings creds s alpn action =
+    runTCPServerWithSocket
+        (settingsTimeout settings)
+        s
         $ \mgr th sock -> do
             backend <- mkBackend settings sock
             E.bracket (contextNew backend params) bye $ \ctx -> do
@@ -103,14 +130,30 @@ run :: Settings -> Credentials -> HostName -> PortNumber -> Server -> IO ()
 run settings creds host port server =
     runTLS settings creds host port "h2" $ run' settings server
 
+-- | Running an HTTP\/2 client over TLS (over TCP).
+--   ALPN is "h2".
+runWithSocket :: Settings -> Credentials -> Socket -> Server -> IO ()
+runWithSocket settings creds s server =
+    runTLSWithSocket settings creds s "h2" $ run' settings server
+
 -- | Running an HTTP\/2 client over TCP.
 runH2C :: Settings -> HostName -> PortNumber -> Server -> IO ()
 runH2C settings@Settings{..} host port server =
-    runTCPServerWithSocket
-        settingsOpenServerSocket
+    runTCPServer
         settingsTimeout
         (Just host)
         (show port)
+        $ \mgr th sock -> do
+            iobackend0 <- tcpIOBackend settings sock
+            let iobackend = timeoutIOBackend th settings iobackend0
+            run' settings server mgr iobackend
+
+-- | Running an HTTP\/2 client over TCP.
+runH2CWithSocket :: Settings -> Socket -> Server -> IO ()
+runH2CWithSocket settings@Settings{..} s server =
+    runTCPServerWithSocket
+        settingsTimeout
+        s
         $ \mgr th sock -> do
             iobackend0 <- tcpIOBackend settings sock
             let iobackend = timeoutIOBackend th settings iobackend0
@@ -137,12 +180,11 @@ run' settings0@Settings{..} server mgr IOBackend{..} =
 runIO
     :: Settings
     -> Credentials
-    -> HostName
-    -> PortNumber
+    -> Socket
     -> (ServerIO -> IO (IO ()))
     -> IO ()
-runIO settings creds host port action =
-    runTLS settings creds host port "h2" $ \mgr iobackend ->
+runIO settings creds s action =
+    runTLSWithSocket settings creds s "h2" $ \mgr iobackend ->
         runIO' settings action mgr iobackend
 
 runIO'
@@ -165,13 +207,11 @@ runIO' settings0@Settings{..} action mgr IOBackend{..} =
             }
 
 runIOH2C
-    :: Settings -> HostName -> PortNumber -> (ServerIO -> IO (IO ())) -> IO ()
-runIOH2C settings0@Settings{..} host port action =
+    :: Settings -> Socket -> (ServerIO -> IO (IO ())) -> IO ()
+runIOH2C settings0@Settings{..} s action =
     runTCPServerWithSocket
-        settingsOpenServerSocket
         settingsTimeout
-        (Just host)
-        (show port)
+        s
         $ \mgr th sock -> do
             iobackend0 <- tcpIOBackend settings0 sock
             let iobackend = timeoutIOBackend th settings0 iobackend0

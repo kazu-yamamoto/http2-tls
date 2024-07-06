@@ -47,7 +47,7 @@ import Data.Maybe (fromMaybe)
 import Data.X509.Validation (validateDefault)
 import Network.HTTP2.Client (Authority, Client, ClientConfig)
 import qualified Network.HTTP2.Client as H2Client
-import Network.Run.TCP
+import Network.Run.TCP hiding (Settings)
 import Network.Socket
 import Network.TLS hiding (HostName)
 import qualified UnliftIO.Exception as E
