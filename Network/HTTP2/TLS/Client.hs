@@ -48,7 +48,8 @@ import Data.Maybe (fromMaybe)
 import Data.X509.Validation (validateDefault)
 import Network.HTTP2.Client (Authority, Client, ClientConfig)
 import qualified Network.HTTP2.Client as H2Client
-import Network.Run.TCP hiding (Settings)
+import Network.Run.TCP (runTCPClientWithSettings)
+import qualified Network.Run.TCP as TCP
 import Network.Socket
 import Network.TLS hiding (HostName)
 import qualified UnliftIO.Exception as E
@@ -92,6 +93,7 @@ runH2C :: Settings -> HostName -> PortNumber -> Client a -> IO a
 runH2C settings serverName port client =
     runH2CWithConfig
         (defaultClientConfig settings $ defaultAuthority serverName)
+        settings
         serverName
         port
         client
@@ -110,7 +112,7 @@ runTLSWithConfig
     -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
 runTLSWithConfig cliconf settings@Settings{..} serverName port alpn action =
-    runTCPClientWithSocket settingsOpenClientSocket serverName (show port) $ \sock -> do
+    runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
         ctx <- contextNew sock params
@@ -127,6 +129,10 @@ runTLSWithConfig cliconf settings@Settings{..} serverName port alpn action =
             (fromMaybe (H2Client.authority cliconf) $ settingsServerNameOverride)
             port
             alpn
+    tcpSettings =
+        TCP.defaultSettings
+            { TCP.settingsOpenClientSocket = settingsOpenClientSocket
+            }
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
 runWithConfig
@@ -139,9 +145,10 @@ runWithConfig cliconf settings serverName port client =
     cliconf' = cliconf{H2Client.scheme = "https"}
 
 -- | Running an HTTP\/2 client over TCP.
-runH2CWithConfig :: ClientConfig -> HostName -> PortNumber -> Client a -> IO a
-runH2CWithConfig cliconf serverName port client =
-    runTCPClient serverName (show port) $ \sock -> do
+runH2CWithConfig
+    :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
+runH2CWithConfig cliconf Settings{..} serverName port client =
+    runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
         recv <- mkRecvTCP Server.defaultSettings sock
@@ -149,6 +156,10 @@ runH2CWithConfig cliconf serverName port client =
   where
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "http"}
+    tcpSettings =
+        TCP.defaultSettings
+            { TCP.settingsOpenClientSocket = settingsOpenClientSocket
+            }
 
 run'
     :: ClientConfig
