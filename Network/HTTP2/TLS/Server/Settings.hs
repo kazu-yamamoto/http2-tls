@@ -5,8 +5,6 @@ import Network.HTTP2.Server (
     defaultServerConfig,
     numberOfWorkers,
  )
-import Network.Run.TCP.Timeout
-import Network.Socket
 import Network.TLS (SessionManager, noSessionManager)
 
 -- Server settings type.
@@ -68,10 +66,6 @@ data Settings = Settings
     -- ^ TLS session manager (H2 and TLS)
     --
     -- Default: 'noSessionManager'
-    , settingsOpenServerSocket :: AddrInfo -> IO Socket
-    -- ^ Function to initialize the server socket (All)
-    --
-    -- Default: 'openServerSocket'
     , settingsEarlyDataSize :: Int
     -- ^ The max size of early data (0-RTT) to be accepted. (H2 and TLS)
     -- 0 means that early data is not accepted.
@@ -95,6 +89,5 @@ defaultSettings =
         , settingsStreamWindowSize = defaultMaxStreamData
         , settingsConnectionWindowSize = defaultMaxData
         , settingsSessionManager = noSessionManager
-        , settingsOpenServerSocket = openServerSocket
         , settingsEarlyDataSize = 0
         }

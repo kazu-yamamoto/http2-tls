@@ -27,7 +27,6 @@ module Network.HTTP2.TLS.Server (
     settingsConnectionWindowSize,
     settingsStreamWindowSize,
     settingsSessionManager,
-    settingsOpenServerSocket,
     settingsEarlyDataSize,
 
     -- * IO backend
