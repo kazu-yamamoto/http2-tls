@@ -1,5 +1,16 @@
 # Revision history for http2-tls
 
+## 0.4.0
+
+* Expose client socket
+  [#19](https://github.com/kazu-yamamoto/http2-tls/pull/19)
+* Drop `settingsOpenServerSocket` because of network-run v0.4.0.
+  [#17](https://github.com/kazu-yamamoto/http2-tls/pull/17)
+* Adding `settingsOpenClientSocket`.
+* New API: `runWishSocket`, etc, for servers.
+* Drop support for older `tls`
+  [#15](https://github.com/kazu-yamamoto/http2-tls/pull/13)
+
 ## 0.3.1
 
 * Providing `settingsWantSessionResumeList`.
