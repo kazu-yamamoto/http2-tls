@@ -45,13 +45,15 @@ data IOBackend = IOBackend
     -- ^ Sending many.
     , recv :: IO ByteString
     -- ^ Receiving.
+    , requestSock :: Socket
+    -- ^ The socket for the request
     , mySockAddr :: SockAddr
     , peerSockAddr :: SockAddr
     }
 
 timeoutIOBackend :: T.Handle -> Settings -> IOBackend -> IOBackend
 timeoutIOBackend th Settings{..} IOBackend{..} =
-    IOBackend send' sendMany' recv' mySockAddr peerSockAddr
+    IOBackend send' sendMany' recv' requestSock mySockAddr peerSockAddr
   where
     send' bs = send bs >> T.tickle th
     sendMany' bss = sendMany bss >> T.tickle th
@@ -69,6 +71,7 @@ tlsIOBackend ctx sock = do
             { send = sendTLS ctx
             , sendMany = sendManyTLS ctx
             , recv = recvTLS ctx
+            , requestSock = sock
             , mySockAddr = mysa
             , peerSockAddr = peersa
             }
@@ -83,6 +86,7 @@ tcpIOBackend settings sock = do
             { send = void . NSB.send sock
             , sendMany = \_ -> return ()
             , recv = recv'
+            , requestSock = sock
             , mySockAddr = mysa
             , peerSockAddr = peersa
             }

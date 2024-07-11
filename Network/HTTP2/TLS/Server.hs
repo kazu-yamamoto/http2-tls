@@ -34,6 +34,7 @@ module Network.HTTP2.TLS.Server (
     send,
     sendMany,
     recv,
+    requestSock,
     mySockAddr,
     peerSockAddr,
 
