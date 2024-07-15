@@ -29,6 +29,12 @@ module Network.HTTP2.TLS.Server (
     settingsSessionManager,
     settingsEarlyDataSize,
 
+    -- ** Rate limits
+    settingsPingRateLimit,
+    settingsEmptyFrameRateLimit,
+    settingsSettingsRateLimit,
+    settingsRstRateLimit,
+
     -- * IO backend
     IOBackend,
     send,
@@ -54,6 +60,10 @@ import Network.HTTP2.Server (
     initialWindowSize,
     maxConcurrentStreams,
     numberOfWorkers,
+    pingRateLimit,
+    emptyFrameRateLimit,
+    settingsRateLimit,
+    rstRateLimit,
     settings,
  )
 import qualified Network.HTTP2.Server as H2Server
@@ -174,6 +184,10 @@ run' settings0@Settings{..} server mgr IOBackend{..} =
                 (settings defaultServerConfig)
                     { initialWindowSize = settingsStreamWindowSize
                     , maxConcurrentStreams = Just settingsConcurrentStreams
+                    , pingRateLimit = settingsPingRateLimit
+                    , emptyFrameRateLimit = settingsEmptyFrameRateLimit
+                    , settingsRateLimit = settingsSettingsRateLimit
+                    , rstRateLimit = settingsRstRateLimit
                     }
             }
 
@@ -203,6 +217,10 @@ runIO' settings0@Settings{..} action mgr IOBackend{..} =
                 (settings defaultServerConfig)
                     { initialWindowSize = settingsStreamWindowSize
                     , maxConcurrentStreams = Just settingsConcurrentStreams
+                    , pingRateLimit = settingsPingRateLimit
+                    , emptyFrameRateLimit = settingsEmptyFrameRateLimit
+                    , settingsRateLimit = settingsSettingsRateLimit
+                    , rstRateLimit = settingsRstRateLimit
                     }
             }
 
