@@ -72,6 +72,30 @@ data Settings = Settings
     --
     -- >>> settingsEarlyDataSize defaultSettings
     -- 0
+
+    , settingsPingRateLimit :: Int
+    -- ^ Maximum number of pings allowed per second (CVE-2019-9512)
+    --
+    -- >>> settingsPingRateLimit defaultSettings
+    -- 10
+
+    , settingsEmptyFrameRateLimit :: Int
+    -- ^ Maximum number of empty data frames allowed per second (CVE-2019-9518)
+    --
+    -- >>> settingsEmptyFrameRateLimit defaultSettings
+    -- 4
+
+    , settingsSettingsRateLimit :: Int
+    -- ^ Maximum number of settings frames allowed per second (CVE-2019-9515)
+    --
+    -- >>> settingsSettingsRateLimit defaultSettings
+    -- 4
+
+    , settingsRstRateLimit :: Int
+    -- ^ Maximum number of reset frames allowed per second (CVE-2023-44487)
+    --
+    -- >>> settingsRstRateLimit
+    -- 4
     }
 
 -- | Default settings.
@@ -90,4 +114,8 @@ defaultSettings =
         , settingsConnectionWindowSize = defaultMaxData
         , settingsSessionManager = noSessionManager
         , settingsEarlyDataSize = 0
+        , settingsPingRateLimit = 10
+        , settingsEmptyFrameRateLimit = 4
+        , settingsSettingsRateLimit = 4
+        , settingsRstRateLimit = 4
         }

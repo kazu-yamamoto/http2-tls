@@ -39,6 +39,12 @@ module Network.HTTP2.TLS.Client (
     settingsOpenClientSocket,
     settingsUseEarlyData,
     settingsOnServerFinished,
+
+    -- ** Rate limits
+    settingsPingRateLimit,
+    settingsEmptyFrameRateLimit,
+    settingsSettingsRateLimit,
+    settingsRstRateLimit,
 ) where
 
 import Data.ByteString (ByteString)
@@ -189,6 +195,10 @@ defaultClientConfig Settings{..} auth =
             (H2Client.settings $ H2Client.defaultClientConfig)
                 { H2Client.initialWindowSize = settingsStreamWindowSize
                 , H2Client.maxConcurrentStreams = Just settingsConcurrentStreams
+                , H2Client.pingRateLimit = settingsPingRateLimit
+                , H2Client.emptyFrameRateLimit = settingsEmptyFrameRateLimit
+                , H2Client.settingsRateLimit = settingsSettingsRateLimit
+                , H2Client.rstRateLimit = settingsRstRateLimit
                 }
         }
 
