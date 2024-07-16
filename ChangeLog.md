@@ -1,5 +1,10 @@
 # Revision history for http2-tls
 
+## 0.4.1
+
+* Make rate limits configurable
+  [#20](https://github.com/kazu-yamamoto/http2-tls/pull/20)
+
 ## 0.4.0
 
 * Expose client socket
