@@ -57,14 +57,14 @@ import Network.HTTP2.Server (
     Server,
     connectionWindowSize,
     defaultServerConfig,
+    emptyFrameRateLimit,
     initialWindowSize,
     maxConcurrentStreams,
     numberOfWorkers,
     pingRateLimit,
-    emptyFrameRateLimit,
-    settingsRateLimit,
     rstRateLimit,
     settings,
+    settingsRateLimit,
  )
 import qualified Network.HTTP2.Server as H2Server
 import Network.HTTP2.Server.Internal (ServerIO, Stream)
