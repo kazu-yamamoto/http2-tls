@@ -195,14 +195,14 @@ runIO
     :: Settings
     -> Credentials
     -> Socket
-    -> (ServerIO -> IO (IO ()))
+    -> (ServerIO Stream -> IO (IO ()))
     -> IO ()
 runIO settings creds s action =
     runTLSWithSocket settings creds s "h2" $ \mgr iobackend ->
         runIO' settings action mgr iobackend
 
 runIO'
-    :: Settings -> (ServerIO -> IO (IO ())) -> T.Manager -> IOBackend -> IO ()
+    :: Settings -> (ServerIO Stream -> IO (IO ())) -> T.Manager -> IOBackend -> IO ()
 runIO' settings0@Settings{..} action mgr IOBackend{..} =
     E.bracket
         (allocConfigForServer settings0 mgr send recv mySockAddr peerSockAddr)
@@ -225,7 +225,7 @@ runIO' settings0@Settings{..} action mgr IOBackend{..} =
             }
 
 runIOH2C
-    :: Settings -> Socket -> (ServerIO -> IO (IO ())) -> IO ()
+    :: Settings -> Socket -> (ServerIO Stream -> IO (IO ())) -> IO ()
 runIOH2C settings0@Settings{..} s action =
     runTCPServerWithSocket
         settingsTimeout
