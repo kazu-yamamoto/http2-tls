@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
+## 0.4.2
+
+* Catching up the new ServerIO.
+
 ## 0.4.1
 
 * Make rate limits configurable
