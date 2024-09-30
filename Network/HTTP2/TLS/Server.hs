@@ -103,10 +103,12 @@ runTLS settings creds host port alpn action =
         (show port)
         $ \mgr th sock -> do
             backend <- mkBackend settings sock
-            E.bracket (contextNew backend params) bye $ \ctx -> do
-                handshake ctx
-                iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
-                action mgr iobackend
+            ctx <- contextNew backend params
+            handshake ctx
+            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
+            r <- action mgr iobackend
+            bye ctx
+            return r
   where
     params = getServerParams settings creds alpn
 
@@ -127,10 +129,12 @@ runTLSWithSocket settings creds s alpn action =
         s
         $ \mgr th sock -> do
             backend <- mkBackend settings sock
-            E.bracket (contextNew backend params) bye $ \ctx -> do
-                handshake ctx
-                iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
-                action mgr iobackend
+            ctx <- contextNew backend params
+            handshake ctx
+            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
+            r <- action mgr iobackend
+            bye ctx
+            return r
   where
     params = getServerParams settings creds alpn
 
