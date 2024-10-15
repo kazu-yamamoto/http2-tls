@@ -22,7 +22,6 @@ module Network.HTTP2.TLS.Server (
     settingsReadBufferSize,
     settingsReadBufferLowerLimit,
     settingsKeyLogger,
-    settingsNumberOfWorkers,
     settingsConcurrentStreams,
     settingsConnectionWindowSize,
     settingsStreamWindowSize,
@@ -60,7 +59,6 @@ import Network.HTTP2.Server (
     emptyFrameRateLimit,
     initialWindowSize,
     maxConcurrentStreams,
-    numberOfWorkers,
     pingRateLimit,
     rstRateLimit,
     settings,
@@ -178,8 +176,7 @@ run' settings0@Settings{..} server mgr IOBackend{..} =
   where
     sconf =
         defaultServerConfig
-            { numberOfWorkers = settingsNumberOfWorkers
-            , connectionWindowSize = settingsConnectionWindowSize
+            { connectionWindowSize = settingsConnectionWindowSize
             , settings =
                 (settings defaultServerConfig)
                     { initialWindowSize = settingsStreamWindowSize
@@ -211,8 +208,7 @@ runIO' settings0@Settings{..} action mgr IOBackend{..} =
   where
     sconf =
         defaultServerConfig
-            { numberOfWorkers = settingsNumberOfWorkers
-            , connectionWindowSize = settingsConnectionWindowSize
+            { connectionWindowSize = settingsConnectionWindowSize
             , settings =
                 (settings defaultServerConfig)
                     { initialWindowSize = settingsStreamWindowSize
