@@ -2,8 +2,7 @@ module Network.HTTP2.TLS.Server.Settings where
 
 import Network.Control
 import Network.HTTP2.Server (
-    defaultServerConfig,
-    numberOfWorkers,
+    defaultServerConfig
  )
 import Network.TLS (SessionManager, noSessionManager)
 
@@ -42,11 +41,6 @@ data Settings = Settings
     -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable. The default is do nothing.
     --
     -- Default: do nothing
-    , settingsNumberOfWorkers :: Int
-    -- ^ The number of workers. (H2 and H2c)
-    --
-    -- >>> settingsNumberOfWorkers defaultSettings
-    -- 8
     , settingsConcurrentStreams :: Int
     -- ^ The maximum number of incoming streams on the net (H2 and H2c)
     --
@@ -108,7 +102,6 @@ defaultSettings =
         , settingsReadBufferSize = 16384
         , settingsReadBufferLowerLimit = 2048
         , settingsKeyLogger = \_ -> return ()
-        , settingsNumberOfWorkers = numberOfWorkers defaultServerConfig
         , settingsConcurrentStreams = defaultMaxStreams
         , settingsStreamWindowSize = defaultMaxStreamData
         , settingsConnectionWindowSize = defaultMaxData
