@@ -1,9 +1,6 @@
 module Network.HTTP2.TLS.Server.Settings where
 
 import Network.Control
-import Network.HTTP2.Server (
-    defaultServerConfig,
- )
 import Network.TLS (SessionManager, noSessionManager)
 
 -- Server settings type.
