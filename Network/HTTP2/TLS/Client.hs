@@ -47,6 +47,7 @@ module Network.HTTP2.TLS.Client (
     settingsRstRateLimit,
 ) where
 
+import qualified Control.Exception as E
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS.C8
 import Data.Default.Class (def)
@@ -58,7 +59,6 @@ import Network.Run.TCP (runTCPClientWithSettings)
 import qualified Network.Run.TCP as TCP
 import Network.Socket
 import Network.TLS hiding (HostName)
-import qualified UnliftIO.Exception as E
 
 import Network.HTTP2.TLS.Client.Settings
 import Network.HTTP2.TLS.Config

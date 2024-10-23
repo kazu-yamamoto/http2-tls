@@ -50,6 +50,7 @@ module Network.HTTP2.TLS.Server (
     ServerIO (..),
 ) where
 
+import qualified Control.Exception as E
 import Data.ByteString (ByteString)
 import Data.Default.Class (def)
 import Network.HTTP2.Server (
@@ -75,7 +76,6 @@ import Network.Socket (
  )
 import Network.TLS hiding (HostName)
 import qualified System.TimeManager as T
-import qualified UnliftIO.Exception as E
 
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO

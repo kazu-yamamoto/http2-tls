@@ -3,6 +3,7 @@
 
 module Network.HTTP2.TLS.IO where
 
+import qualified Control.Exception as E
 import Control.Monad (void, when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
@@ -13,7 +14,6 @@ import qualified Network.Socket.ByteString as NSB
 import Network.TLS hiding (HostName)
 import System.IO.Error (isEOFError)
 import qualified System.TimeManager as T
-import qualified UnliftIO.Exception as E
 
 import Network.HTTP2.TLS.Server.Settings
 
