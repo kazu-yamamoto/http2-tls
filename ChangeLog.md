@@ -1,5 +1,11 @@
 # Revision history for http2-tls
 
+## 0.5.0
+
+* Remove `settingsNumberOfWorkers`.
+  [#21](https://github.com/kazu-yamamoto/http2-tls/pull/21)
+* Removing unliftio.
+
 ## 0.4.2
 
 * Catching up the new ServerIO.
