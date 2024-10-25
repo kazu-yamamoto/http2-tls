@@ -22,6 +22,7 @@ module Network.HTTP2.TLS.Server (
     settingsReadBufferSize,
     settingsReadBufferLowerLimit,
     settingsKeyLogger,
+    settingsNumberOfWorkers,
     settingsConcurrentStreams,
     settingsConnectionWindowSize,
     settingsStreamWindowSize,

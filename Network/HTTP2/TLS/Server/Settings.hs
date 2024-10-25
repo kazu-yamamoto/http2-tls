@@ -38,6 +38,8 @@ data Settings = Settings
     -- Applications may wish to set this depending on the SSLKEYLOGFILE environment variable. The default is do nothing.
     --
     -- Default: do nothing
+    , settingsNumberOfWorkers :: Int
+    -- ^ The http2 library now spawns a thread for each connection. Its limit is based on 'settingsConcurrentStreams'.
     , settingsConcurrentStreams :: Int
     -- ^ The maximum number of incoming streams on the net (H2 and H2c)
     --
@@ -85,6 +87,8 @@ data Settings = Settings
     -- 4
     }
 
+{-# DEPRECATED settingsNumberOfWorkers "This field is meaningless now" #-}
+
 -- | Default settings.
 defaultSettings :: Settings
 defaultSettings =
@@ -95,6 +99,7 @@ defaultSettings =
         , settingsReadBufferSize = 16384
         , settingsReadBufferLowerLimit = 2048
         , settingsKeyLogger = \_ -> return ()
+        , settingsNumberOfWorkers = 8 -- dummy
         , settingsConcurrentStreams = defaultMaxStreams
         , settingsStreamWindowSize = defaultMaxStreamData
         , settingsConnectionWindowSize = defaultMaxData
