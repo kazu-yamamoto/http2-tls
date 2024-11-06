@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
+## 0.4.4
+
+* Stop using Data.Default.Class.
+
 ## 0.4.3
 
 * `settingsNumberOfWorkers` is obsoleted.
