@@ -50,7 +50,6 @@ module Network.HTTP2.TLS.Client (
 import qualified Control.Exception as E
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS.C8
-import Data.Default.Class (def)
 import Data.Maybe (fromMaybe)
 import Data.X509.Validation (validateDefault)
 import Network.HTTP2.Client (Authority, Client, ClientConfig)
@@ -246,20 +245,20 @@ getClientParams Settings{..} serverName port alpn =
         }
   where
     shared =
-        def
+        defaultShared
             { sharedValidationCache = validateCache
             , sharedCAStore = settingsCAStore
             , sharedSessionManager = settingsSessionManager
             }
     supported = strongSupported
     hooks =
-        def
+        defaultClientHooks
             { onSuggestALPN = return $ Just [alpn]
             , onServerCertificate = validateCert
             , onServerFinished = settingsOnServerFinished
             }
     validateCache
-        | settingsValidateCert = def
+        | settingsValidateCert = defaultValidationCache
         | otherwise =
             ValidationCache
                 (\_ _ _ -> return ValidationCachePass)
@@ -268,6 +267,6 @@ getClientParams Settings{..} serverName port alpn =
         | settingsValidateCert = validateDefault
         | otherwise = \_ _ _ _ -> return []
     debug =
-        def
+        defaultDebugParams
             { debugKeyLogger = settingsKeyLogger
             }

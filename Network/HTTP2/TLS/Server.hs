@@ -53,7 +53,6 @@ module Network.HTTP2.TLS.Server (
 
 import qualified Control.Exception as E
 import Data.ByteString (ByteString)
-import Data.Default.Class (def)
 import Network.HTTP2.Server (
     Server,
     connectionWindowSize,
@@ -244,7 +243,7 @@ getServerParams
     -> ByteString
     -> ServerParams
 getServerParams Settings{..} creds alpn =
-    def
+    defaultParamsServer
         { serverSupported = supported
         , serverShared = shared
         , serverHooks = hooks
@@ -253,17 +252,17 @@ getServerParams Settings{..} creds alpn =
         }
   where
     shared =
-        def
+        defaultShared
             { sharedCredentials = creds
             , sharedSessionManager = settingsSessionManager
             }
     supported = strongSupported
     hooks =
-        def
+        defaultServerHooks
             { onALPNClientSuggest = Just $ selectALPN alpn
             }
     debug =
-        def
+        defaultDebugParams
             { debugKeyLogger = settingsKeyLogger
             }
 
