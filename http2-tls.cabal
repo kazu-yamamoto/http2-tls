@@ -40,12 +40,12 @@ library
         bytestring >=0.10,
         crypton-x509-store >=1.6 && <1.7,
         crypton-x509-validation >=1.6 && <1.7,
-        http2 >=5.3.2 && <5.4,
+        http2 >=5.3.9 && <5.4,
         network >=3.1.4,
         network-control >=0.1 && <0.2,
         network-run >=0.4 && <0.5,
         recv >=0.1.0 && <0.2,
-        time-manager >=0.0.1 && <0.2,
+        time-manager >=0.2 && <0.3,
         tls >=2.1.4 && <2.2,
         utf8-string >=1.0 && <1.1
 
