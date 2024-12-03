@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
+## 0.4.5
+
+* Using newest packages.
+
 ## 0.4.4
 
 * Stop using Data.Default.Class.
