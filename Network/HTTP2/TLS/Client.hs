@@ -187,7 +187,7 @@ defaultClientConfig
 defaultClientConfig Settings{..} auth =
     H2Client.defaultClientConfig
         { H2Client.scheme = "https"
-        , H2Client.authority = auth
+        , H2Client.authority = fromMaybe auth settingsServerNameOverride
         , H2Client.cacheLimit = settingsCacheLimit
         , H2Client.connectionWindowSize = settingsConnectionWindowSize
         , H2Client.settings =
