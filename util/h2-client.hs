@@ -87,9 +87,9 @@ main = do
         h : p : [] -> return (h, read p, ["/"])
         h : p : ps -> return (h, read p, C8.pack <$> ps)
     ref <- newIORef Nothing
-    let keylog msg = case optKeyLogFile of
-            Nothing -> return ()
-            Just file -> appendFile file (msg ++ "\n")
+    let keylog = case optKeyLogFile of
+            Nothing -> settingsKeyLogger defaultSettings
+            Just file -> \msg -> appendFile file (msg ++ "\n")
         settings =
             defaultSettings
                 { settingsValidateCert = optValidate

@@ -71,9 +71,9 @@ main = do
         _ -> showUsageAndExit usage
     Right cred@(!_cc, !_priv) <- credentialLoadX509 optCertFile optKeyFile
     sm <- newSessionTicketManager defaultConfig
-    let keylog msg = case optKeyLogFile of
-            Nothing -> return ()
-            Just file -> appendFile file (msg ++ "\n")
+    let keylog = case optKeyLogFile of
+            Nothing -> settingsKeyLogger defaultSettings
+            Just file -> \msg -> appendFile file (msg ++ "\n")
         settings =
             defaultSettings
                 { settingsKeyLogger = keylog

@@ -1,7 +1,7 @@
 module Network.HTTP2.TLS.Server.Settings where
 
 import Network.Control
-import Network.TLS (SessionManager, noSessionManager)
+import Network.TLS (SessionManager, defaultKeyLogger, noSessionManager)
 
 -- Server settings type.
 data Settings = Settings
@@ -98,7 +98,7 @@ defaultSettings =
         , settingsSlowlorisSize = 50
         , settingsReadBufferSize = 16384
         , settingsReadBufferLowerLimit = 2048
-        , settingsKeyLogger = \_ -> return ()
+        , settingsKeyLogger = defaultKeyLogger
         , settingsNumberOfWorkers = 8 -- dummy
         , settingsConcurrentStreams = defaultMaxStreams
         , settingsStreamWindowSize = defaultMaxStreamData

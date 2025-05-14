@@ -14,6 +14,7 @@ import Network.TLS (
     SessionData,
     SessionID,
     SessionManager,
+    defaultKeyLogger,
     noSessionManager,
  )
 
@@ -118,7 +119,7 @@ data Settings = Settings
 defaultSettings :: Settings
 defaultSettings =
     Settings
-        { settingsKeyLogger = \_ -> return ()
+        { settingsKeyLogger = defaultKeyLogger
         , settingsValidateCert = True
         , settingsCAStore = mempty
         , settingsServerNameOverride = Nothing
