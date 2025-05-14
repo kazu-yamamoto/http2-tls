@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
+## 0.4.6
+
+* Supporting SSLKEYLOGFILE.
+
 ## 0.4.5
 
 * Using newest packages.
