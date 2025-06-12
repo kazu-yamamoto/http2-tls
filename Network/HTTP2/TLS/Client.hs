@@ -51,7 +51,6 @@ import qualified Control.Exception as E
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS.C8
 import Data.Maybe (fromMaybe)
-import Data.X509.Validation (validateDefault)
 import Network.HTTP2.Client (Authority, Client, ClientConfig)
 import qualified Network.HTTP2.Client as H2Client
 import Network.Run.TCP (runTCPClientWithSettings)
@@ -254,7 +253,6 @@ getClientParams Settings{..} sni port alpn = do
     hooks =
         defaultClientHooks
             { onSuggestALPN = return $ Just [alpn]
-            , onServerCertificate = validateCert
             , onServerFinished = settingsOnServerFinished
             }
     validateCache
@@ -263,9 +261,6 @@ getClientParams Settings{..} sni port alpn = do
             ValidationCache
                 (\_ _ _ -> return ValidationCachePass)
                 (\_ _ _ -> return ())
-    validateCert
-        | settingsValidateCert = validateDefault
-        | otherwise = \_ _ _ _ -> return []
     debug =
         defaultDebugParams
             { debugKeyLogger = settingsKeyLogger
