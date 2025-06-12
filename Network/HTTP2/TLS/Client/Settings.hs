@@ -32,7 +32,7 @@ data Settings = Settings
     -- >>> settingsValidateCert defaultSettings
     -- True
     , settingsCAStore :: CertificateStore
-    -- ^ Certificate store used for validation. (TLS and H2)
+    -- ^ Obsoleted.
     --
     -- Default: 'mempty'.
     , settingsServerNameOverride :: Maybe HostName
