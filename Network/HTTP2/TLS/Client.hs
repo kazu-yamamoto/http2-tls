@@ -126,14 +126,10 @@ runTLSWithConfig cliconf settings@Settings{..} serverName port alpn action =
         bye ctx
         return r
   where
+    sni = fromMaybe (H2Client.authority cliconf) $ settingsServerNameOverride
     -- TLS client parameters
     params :: ClientParams
-    params =
-        getClientParams
-            settings
-            (fromMaybe (H2Client.authority cliconf) $ settingsServerNameOverride)
-            port
-            alpn
+    params = getClientParams settings sni port alpn
     tcpSettings =
         TCP.defaultSettings
             { TCP.settingsOpenClientSocket = settingsOpenClientSocket
@@ -230,10 +226,10 @@ getClientParams
     -> ByteString
     -- ^ ALPN
     -> ClientParams
-getClientParams Settings{..} serverName port alpn =
+getClientParams Settings{..} sni port alpn =
     -- RFC 4366 mandates UTF-8 for SNI
     -- <https://datatracker.ietf.org/doc/html/rfc4366#section-3.1>
-    (defaultParamsClient serverName (BS.C8.pack $ show port))
+    (defaultParamsClient sni (BS.C8.pack $ show port))
         { clientSupported = supported
         , clientWantSessionResume = settingsWantSessionResume
         , clientWantSessionResumeList = settingsWantSessionResumeList
