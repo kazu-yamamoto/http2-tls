@@ -26,6 +26,7 @@ module Network.HTTP2.TLS.Client (
     defaultSettings,
     settingsKeyLogger,
     settingsValidateCert,
+    settingsOnServerCertificate,
     settingsCAStore,
     settingsAddrInfoFlags,
     settingsCacheLimit,
@@ -254,6 +255,7 @@ getClientParams Settings{..} sni port alpn = do
         defaultClientHooks
             { onSuggestALPN = return $ Just [alpn]
             , onServerFinished = settingsOnServerFinished
+            , onServerCertificate = settingsOnServerCertificate
             }
     validateCache
         | settingsValidateCert = defaultValidationCache

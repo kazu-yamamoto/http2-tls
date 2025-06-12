@@ -1,6 +1,7 @@
 module Network.HTTP2.TLS.Client.Settings where
 
 import Data.X509.CertificateStore (CertificateStore)
+import Data.X509.Validation (validateDefault)
 import Network.Socket
 
 import Network.Control
@@ -11,6 +12,7 @@ import Network.HTTP2.Client (
 import Network.Run.TCP (openClientSocket)
 import Network.TLS (
     Information,
+    OnServerCertificate,
     SessionData,
     SessionID,
     SessionManager,
@@ -31,6 +33,10 @@ data Settings = Settings
     --
     -- >>> settingsValidateCert defaultSettings
     -- True
+    , settingsOnServerCertificate :: OnServerCertificate
+    -- ^ How to validate server certificates.
+    --
+    -- Default: 'validateDefault'
     , settingsCAStore :: CertificateStore
     -- ^ Obsoleted.
     --
@@ -121,6 +127,7 @@ defaultSettings =
     Settings
         { settingsKeyLogger = defaultKeyLogger
         , settingsValidateCert = True
+        , settingsOnServerCertificate = validateDefault
         , settingsCAStore = mempty
         , settingsServerNameOverride = Nothing
         , settingsAddrInfoFlags = []
