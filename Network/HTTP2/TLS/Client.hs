@@ -58,6 +58,7 @@ import Network.Run.TCP (runTCPClientWithSettings)
 import qualified Network.Run.TCP as TCP
 import Network.Socket
 import Network.TLS hiding (HostName)
+import System.X509 (getSystemCertificateStore)
 
 import Network.HTTP2.TLS.Client.Settings
 import Network.HTTP2.TLS.Config
@@ -120,6 +121,7 @@ runTLSWithConfig cliconf settings@Settings{..} serverName port alpn action =
     runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
+        params <- getClientParams settings sni port alpn
         ctx <- contextNew sock params
         handshake ctx
         r <- action ctx mysa peersa
@@ -127,9 +129,6 @@ runTLSWithConfig cliconf settings@Settings{..} serverName port alpn action =
         return r
   where
     sni = fromMaybe (H2Client.authority cliconf) $ settingsServerNameOverride
-    -- TLS client parameters
-    params :: ClientParams
-    params = getClientParams settings sni port alpn
     tcpSettings =
         TCP.defaultSettings
             { TCP.settingsOpenClientSocket = settingsOpenClientSocket
@@ -225,27 +224,32 @@ getClientParams
     -- [ServiceID](https://hackage.haskell.org/package/x509-validation-1.6.12/docs/Data-X509-Validation.html#t:ServiceID).
     -> ByteString
     -- ^ ALPN
-    -> ClientParams
-getClientParams Settings{..} sni port alpn =
+    -> IO ClientParams
+getClientParams Settings{..} sni port alpn = do
+    caStore <-
+        if settingsValidateCert
+            then getSystemCertificateStore
+            else return mempty
+    let shared =
+            defaultShared
+                { sharedValidationCache = validateCache
+                , sharedCAStore = caStore
+                , sharedSessionManager = settingsSessionManager
+                }
     -- RFC 4366 mandates UTF-8 for SNI
     -- <https://datatracker.ietf.org/doc/html/rfc4366#section-3.1>
-    (defaultParamsClient sni (BS.C8.pack $ show port))
-        { clientSupported = supported
-        , clientWantSessionResume = settingsWantSessionResume
-        , clientWantSessionResumeList = settingsWantSessionResumeList
-        , clientUseServerNameIndication = True
-        , clientShared = shared
-        , clientHooks = hooks
-        , clientDebug = debug
-        , clientUseEarlyData = settingsUseEarlyData
-        }
-  where
-    shared =
-        defaultShared
-            { sharedValidationCache = validateCache
-            , sharedCAStore = settingsCAStore
-            , sharedSessionManager = settingsSessionManager
+    return
+        (defaultParamsClient sni (BS.C8.pack $ show port))
+            { clientSupported = supported
+            , clientWantSessionResume = settingsWantSessionResume
+            , clientWantSessionResumeList = settingsWantSessionResumeList
+            , clientUseServerNameIndication = True
+            , clientShared = shared
+            , clientHooks = hooks
+            , clientDebug = debug
+            , clientUseEarlyData = settingsUseEarlyData
             }
+  where
     supported = strongSupported
     hooks =
         defaultClientHooks
