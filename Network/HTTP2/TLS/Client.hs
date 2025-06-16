@@ -34,6 +34,7 @@ module Network.HTTP2.TLS.Client (
     settingsConnectionWindowSize,
     settingsStreamWindowSize,
     settingsServerNameOverride,
+    settingsUseServerNameIndication,
     settingsSessionManager,
     settingsWantSessionResume,
     settingsWantSessionResumeList,
@@ -243,7 +244,7 @@ getClientParams Settings{..} sni port alpn = do
             { clientSupported = supported
             , clientWantSessionResume = settingsWantSessionResume
             , clientWantSessionResumeList = settingsWantSessionResumeList
-            , clientUseServerNameIndication = True
+            , clientUseServerNameIndication = settingsUseServerNameIndication
             , clientShared = shared
             , clientHooks = hooks
             , clientDebug = debug

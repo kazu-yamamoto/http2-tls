@@ -50,6 +50,10 @@ data Settings = Settings
     -- be different (for example in the case of domain fronting);
     -- 'settingsServerNameOverride' can be used to give SNI a different value
     -- than @:authority@.
+    , settingsUseServerNameIndication :: Bool
+    -- ^ If 'True', SNI is used. Otherwise, the SNI extension is not sent.
+    --
+    -- Default: 'True'
     , settingsAddrInfoFlags :: [AddrInfoFlag]
     -- ^ Obsoleted.
     , settingsCacheLimit :: Int
@@ -130,6 +134,7 @@ defaultSettings =
         , settingsOnServerCertificate = validateDefault
         , settingsCAStore = mempty
         , settingsServerNameOverride = Nothing
+        , settingsUseServerNameIndication = True
         , settingsAddrInfoFlags = []
         , settingsCacheLimit = cacheLimit defaultClientConfig
         , settingsConcurrentStreams = defaultMaxStreams
