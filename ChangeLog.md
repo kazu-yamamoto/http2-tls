@@ -1,5 +1,10 @@
 # Revision history for http2-tls
 
+## 0.4.7
+
+* Cleaning up settings.
+  [#25](https://github.com/kazu-yamamoto/http2-tls/pull/25)
+
 ## 0.4.6
 
 * Supporting SSLKEYLOGFILE.
