@@ -1,6 +1,7 @@
 module Network.HTTP2.TLS.Client.Settings where
 
 import Data.X509.CertificateStore (CertificateStore)
+import Data.X509.Validation (validateDefault)
 import Network.Socket
 
 import Network.Control
@@ -11,6 +12,7 @@ import Network.HTTP2.Client (
 import Network.Run.TCP (openClientSocket)
 import Network.TLS (
     Information,
+    OnServerCertificate,
     SessionData,
     SessionID,
     SessionManager,
@@ -31,8 +33,12 @@ data Settings = Settings
     --
     -- >>> settingsValidateCert defaultSettings
     -- True
+    , settingsOnServerCertificate :: OnServerCertificate
+    -- ^ How to validate server certificates.
+    --
+    -- Default: 'validateDefault'
     , settingsCAStore :: CertificateStore
-    -- ^ Certificate store used for validation. (TLS and H2)
+    -- ^ Obsoleted.
     --
     -- Default: 'mempty'.
     , settingsServerNameOverride :: Maybe HostName
@@ -44,6 +50,10 @@ data Settings = Settings
     -- be different (for example in the case of domain fronting);
     -- 'settingsServerNameOverride' can be used to give SNI a different value
     -- than @:authority@.
+    , settingsUseServerNameIndication :: Bool
+    -- ^ If 'True', SNI is used. Otherwise, the SNI extension is not sent.
+    --
+    -- Default: 'True'
     , settingsAddrInfoFlags :: [AddrInfoFlag]
     -- ^ Obsoleted.
     , settingsCacheLimit :: Int
@@ -121,8 +131,10 @@ defaultSettings =
     Settings
         { settingsKeyLogger = defaultKeyLogger
         , settingsValidateCert = True
+        , settingsOnServerCertificate = validateDefault
         , settingsCAStore = mempty
         , settingsServerNameOverride = Nothing
+        , settingsUseServerNameIndication = True
         , settingsAddrInfoFlags = []
         , settingsCacheLimit = cacheLimit defaultClientConfig
         , settingsConcurrentStreams = defaultMaxStreams

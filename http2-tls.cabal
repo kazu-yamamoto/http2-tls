@@ -1,6 +1,6 @@
 cabal-version: >=1.10
 name:          http2-tls
-version:       0.4.6
+version:       0.4.7
 license:       BSD3
 license-file:  LICENSE
 maintainer:    Kazu Yamamoto <kazu@iij.ad.jp>
@@ -39,6 +39,7 @@ library
         base >=4.9 && <5,
         bytestring >=0.10,
         crypton-x509-store >=1.6 && <1.7,
+        crypton-x509-system >=1.6 && <1.7,
         crypton-x509-validation >=1.6 && <1.7,
         http2 >=5.3.9 && <5.4,
         network >=3.1.4,
