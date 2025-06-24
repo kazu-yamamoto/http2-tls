@@ -41,6 +41,7 @@ module Network.HTTP2.TLS.Client (
     settingsOpenClientSocket,
     settingsUseEarlyData,
     settingsOnServerFinished,
+    settingsTimeout,
 
     -- ** Rate limits
     settingsPingRateLimit,
@@ -59,6 +60,7 @@ import Network.Run.TCP (runTCPClientWithSettings)
 import qualified Network.Run.TCP as TCP
 import Network.Socket
 import Network.TLS hiding (HostName)
+import System.Timeout (timeout)
 import System.X509 (getSystemCertificateStore)
 
 import Network.HTTP2.TLS.Client.Settings
@@ -66,6 +68,9 @@ import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
 import qualified Network.HTTP2.TLS.Server.Settings as Server
 import Network.HTTP2.TLS.Supported
+
+data H2TlsTimeout = H2TlsTimeout deriving (Eq, Show)
+instance E.Exception H2TlsTimeout
 
 ----------------------------------------------------------------
 -- Default API
@@ -139,8 +144,16 @@ runTLSWithConfig cliconf settings@Settings{..} serverName port alpn action =
 runWithConfig
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
 runWithConfig cliconf settings serverName port client =
-    runTLSWithConfig cliconf settings serverName port "h2" $ \ctx mysa peersa ->
-        run' cliconf' (sendTLS ctx) (recvTLS ctx) mysa peersa client
+    runTLSWithConfig cliconf settings serverName port "h2" $ \ctx mysa peersa -> do
+        let tout = settingsTimeout settings
+            recv
+                | tout > 0 = do
+                    mx <- timeout (tout * 1000000) $ recvTLS ctx
+                    case mx of
+                        Nothing -> E.throwIO H2TlsTimeout
+                        Just x -> return x
+                | otherwise = recvTLS ctx
+        run' cliconf' (sendTLS ctx) recv mysa peersa client
   where
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "https"}
@@ -153,7 +166,15 @@ runH2CWithConfig cliconf Settings{..} serverName port client =
         mysa <- getSocketName sock
         peersa <- getPeerName sock
         recv <- mkRecvTCP Server.defaultSettings sock
-        run' cliconf' (sendTCP sock) recv mysa peersa client
+        let tout = settingsTimeout
+            recv'
+                | tout > 0 = do
+                    mx <- timeout (tout * 1000000) recv
+                    case mx of
+                        Nothing -> E.throwIO H2TlsTimeout
+                        Just x -> return x
+                | otherwise = recv
+        run' cliconf' (sendTCP sock) recv' mysa peersa client
   where
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "http"}

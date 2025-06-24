@@ -123,6 +123,11 @@ data Settings = Settings
     --
     -- >>> settingsRstRateLimit
     -- 4
+    , settingsTimeout :: Int
+    -- ^ Timeout in seconds. Non-positive values mean no timeout. (H2 and H2c)
+    --
+    -- >>> settingsTimeout defaultSettings
+    -- 0
     }
 
 -- | Default settings.
@@ -150,4 +155,5 @@ defaultSettings =
         , settingsEmptyFrameRateLimit = 4
         , settingsSettingsRateLimit = 4
         , settingsRstRateLimit = 4
+        , settingsTimeout = 0
         }
