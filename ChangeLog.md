@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
+## 0.4.8
+
+* settingsTimeout for clients.
+
 ## 0.4.7
 
 * Cleaning up settings.
