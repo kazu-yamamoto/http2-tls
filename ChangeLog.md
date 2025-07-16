@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
+## 0.4.9
+
+* Making use of settingsCAStore again.
+
 ## 0.4.8
 
 * settingsTimeout for clients.
