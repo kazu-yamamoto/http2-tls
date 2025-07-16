@@ -54,6 +54,7 @@ import qualified Control.Exception as E
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS.C8
 import Data.Maybe (fromMaybe)
+import Data.X509.CertificateStore (isEmptyCertificateStore)
 import Network.HTTP2.Client (Authority, Client, ClientConfig)
 import qualified Network.HTTP2.Client as H2Client
 import Network.Run.TCP (runTCPClientWithSettings)
@@ -250,7 +251,10 @@ getClientParams
 getClientParams Settings{..} sni port alpn = do
     caStore <-
         if settingsValidateCert
-            then getSystemCertificateStore
+            then
+                if isEmptyCertificateStore settingsCAStore
+                    then getSystemCertificateStore
+                    else return settingsCAStore
             else return mempty
     let shared =
             defaultShared
