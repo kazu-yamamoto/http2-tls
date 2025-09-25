@@ -92,8 +92,8 @@ runTLS
     -> PortNumber
     -> ByteString
     -- ^ ALPN
-    -> (T.Manager -> IOBackend -> IO a)
-    -> IO a
+    -> (T.Manager -> IOBackend -> IO ())
+    -> IO ()
 runTLS settings creds host port alpn action =
     runTCPServer
         (settingsTimeout settings)
@@ -104,9 +104,8 @@ runTLS settings creds host port alpn action =
             ctx <- contextNew backend params
             handshake ctx
             iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
-            r <- action mgr iobackend
+            action mgr iobackend
             bye ctx
-            return r
   where
     params = getServerParams settings creds alpn
 
@@ -119,8 +118,8 @@ runTLSWithSocket
     -> Socket
     -> ByteString
     -- ^ ALPN
-    -> (T.Manager -> IOBackend -> IO a)
-    -> IO a
+    -> (T.Manager -> IOBackend -> IO ())
+    -> IO ()
 runTLSWithSocket settings creds s alpn action =
     runTCPServerWithSocket
         (settingsTimeout settings)
