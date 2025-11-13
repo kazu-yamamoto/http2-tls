@@ -36,6 +36,7 @@ allocConfigForServer Settings{..} mgr send recv mysa peersa = do
                 , confTimeoutManager = mgr
                 , confMySockAddr = mysa
                 , confPeerSockAddr = peersa
+                , confReadNTimeout = False
                 }
     return config
 
@@ -62,6 +63,7 @@ allocConfigForClient send recv mysa peersa = do
                 , confTimeoutManager = mgr
                 , confMySockAddr = mysa
                 , confPeerSockAddr = peersa
+                , confReadNTimeout = False
                 }
     return config
 
