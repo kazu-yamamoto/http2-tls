@@ -50,7 +50,7 @@ allocConfigForClient send recv mysa peersa = do
     recvN <- makeRecvN "" recv
     -- A global manager does not exist.
     -- So, a timeout manager is created per connection.
-    mgr <- T.initialize 30000000 -- fixme
+    mgr <- T.initialize 0
     let config =
             C.defaultConfig
                 { C.confWriteBuffer = buf
