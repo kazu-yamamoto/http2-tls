@@ -126,6 +126,9 @@ data Settings = Settings
     , settingsTimeout :: Int
     -- ^ Timeout in seconds. Non-positive values mean no timeout. (H2 and H2c)
     --
+    -- If nothing is received from the server for this long, the connection is
+    -- closed with 'Network.HTTP2.Client.ConnectionIsTimeout'.
+    --
     -- >>> settingsTimeout defaultSettings
     -- 0
     }
