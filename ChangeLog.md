@@ -1,5 +1,13 @@
 # Revision history for http2-tls
 
+## 0.5.5
+
+* Client: `settingsTimeout` is now the idle timeout of the connection,
+  closing it with `ConnectionIsTimeout`.  The default (0) means no
+  timeout; a hidden 30-second timeout was applied before.
+  [#26](https://github.com/kazu-yamamoto/http2-tls/pull/26)
+* Using network-run v0.6 and time-manager v0.3.
+
 ## 0.5.4
 
 * Don't eat an asynchronous exception.
