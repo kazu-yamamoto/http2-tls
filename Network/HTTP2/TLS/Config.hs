@@ -43,14 +43,15 @@ freeConfigForServer :: Config -> IO ()
 freeConfigForServer conf = free $ C.confWriteBuffer conf
 
 allocConfigForClient
-    :: (ByteString -> IO ()) -> IO ByteString -> SockAddr -> SockAddr -> IO Config
-allocConfigForClient send recv mysa peersa = do
+    :: Int -> (ByteString -> IO ()) -> IO ByteString -> SockAddr -> SockAddr -> IO Config
+allocConfigForClient tout send recv mysa peersa = do
     let wbufsiz = 4096 -- fixme
     buf <- mallocBytes wbufsiz
     recvN <- makeRecvN "" recv
     -- A global manager does not exist.
     -- So, a timeout manager is created per connection.
-    mgr <- T.initialize 30000000 -- fixme
+    -- The receiver of http2 uses it as an idle timeout.
+    mgr <- T.initialize (tout * 1000000)
     let config =
             C.defaultConfig
                 { C.confWriteBuffer = buf
