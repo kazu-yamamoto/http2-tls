@@ -68,6 +68,4 @@ allocConfigForClient tout send recv mysa peersa = do
 
 -- | Deallocating the resource of the simple configuration.
 freeConfigForClient :: Config -> IO ()
-freeConfigForClient conf = do
-    free $ C.confWriteBuffer conf
-    T.killManager $ C.confTimeoutManager conf
+freeConfigForClient conf = free $ C.confWriteBuffer conf
