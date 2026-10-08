@@ -17,9 +17,9 @@ import Network.TLS hiding (HostName)
 import Network.HTTP2.Client (HTTP2Error (..))
 import System.IO.Error (isEOFError)
 import qualified System.IO.Error as E
-import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Server.Settings
+import Network.HTTP2.TLS.Watchdog
 
 ----------------------------------------------------------------
 
@@ -83,8 +83,11 @@ data IOBackend = IOBackend
     , peerSockAddr :: SockAddr
     }
 
-timeoutIOBackend :: T.Handle -> Settings -> IOBackend -> IOBackend
-timeoutIOBackend th Settings{..} IOBackend{..} =
+-- | Reporting progress to the watchdog of the connection.  A read too
+--   small to be anything but a slowloris does not count; see
+--   'settingsSlowlorisSize'.
+watchedIOBackend :: TLSWatchdog -> Settings -> IOBackend -> IOBackend
+watchedIOBackend wd Settings{..} IOBackend{..} =
     IOBackend
         { send = send'
         , sendWith = sendWith'
@@ -94,12 +97,12 @@ timeoutIOBackend th Settings{..} IOBackend{..} =
         , ..
         }
   where
-    send' bs = send bs >> T.tickle th
+    send' bs = send bs >> progress wd
     sendWith' giveUp bs = do
         r <- sendWith giveUp bs
-        when (isRight r) $ T.tickle th
+        when (isRight r) $ progress wd
         return r
-    sendMany' bss = sendMany bss >> T.tickle th
+    sendMany' bss = sendMany bss >> progress wd
     recv' = do
         bs <- recv
         tickleIfLarge bs
@@ -108,7 +111,7 @@ timeoutIOBackend th Settings{..} IOBackend{..} =
         r <- recvWith giveUp
         either (\_ -> return ()) tickleIfLarge r
         return r
-    tickleIfLarge bs = when (BS.length bs > settingsSlowlorisSize) $ T.tickle th
+    tickleIfLarge bs = when (BS.length bs > settingsSlowlorisSize) $ progress wd
 
 -- | The 'TVar's are the ones given to 'mkBackend': what a send and a
 --   receive of the backend give up on.
@@ -133,18 +136,21 @@ tlsIOBackend giveUpVar recvGiveUpVar ctx sock = do
             , peerSockAddr = peersa
             }
 
-tcpIOBackend :: Settings -> Socket -> IO IOBackend
-tcpIOBackend settings sock = do
+-- | Everything here also gives up once the watchdog has given up on the
+--   connection, rather than waiting for the peer for ever.
+tcpIOBackend :: Settings -> TLSWatchdog -> Socket -> IO IOBackend
+tcpIOBackend settings wd sock = do
     recvWith' <- mkRecvTCPWith settings sock
     mysa <- getSocketName sock
     peersa <- getPeerName sock
+    let expired = timedOutSTM wd
     return $
         IOBackend
-            { send = sendTCP sock
-            , sendWith = sendTCPWith sock
+            { send = \bs -> sendTCPWith sock expired bs >>= orTimeout
+            , sendWith = \giveUp -> sendTCPWith sock (giveUp `orElse` expired)
             , sendMany = \_ -> return ()
-            , recv = recvWith' retry >>= orTimeout
-            , recvWith = recvWith'
+            , recv = recvWith' expired >>= orTimeout
+            , recvWith = \giveUp -> recvWith' (giveUp `orElse` expired)
             , requestSock = sock
             , mySockAddr = mysa
             , peerSockAddr = peersa
@@ -179,14 +185,20 @@ recvTLS ctx = E.handle onEOF $ recvData ctx
 -- | A send of the backend gives up on what the first 'TVar' holds, which
 --   the http2 library sets once it sends through 'sendWith', and a
 --   receive on what the second holds, which 'recvWith' sets.
-mkBackend :: Settings -> TVar (STM ()) -> TVar (STM ()) -> Socket -> IO Backend
-mkBackend settings giveUpVar recvGiveUpVar sock = do
-    let send' bs = do
+--   Both also give up once the watchdog has given up on the connection,
+--   which is how the TLS handshake is timed out.
+mkBackend
+    :: Settings -> TLSWatchdog -> TVar (STM ()) -> TVar (STM ()) -> Socket -> IO Backend
+mkBackend settings wd giveUpVar recvGiveUpVar sock = do
+    let expired = timedOutSTM wd
+        send' bs = do
             giveUp <- readTVarIO giveUpVar
-            sendTCPWith sock giveUp bs
+            sendTCPWith sock (giveUp `orElse` expired) bs
                 >>= either (\_ -> E.throwIO ConnectionIsTimeout) return
     recvWith' <- mkRecvTCPWith settings sock
-    let recv' = readTVarIO recvGiveUpVar >>= recvWith' >>= orTimeout
+    let recv' = do
+            giveUp <- readTVarIO recvGiveUpVar
+            recvWith' (giveUp `orElse` expired) >>= orTimeout
     recvN <- makeRecvN "" recv'
     return
         Backend
