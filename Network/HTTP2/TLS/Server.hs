@@ -75,7 +75,6 @@ import Network.Socket (
     Socket,
  )
 import Network.TLS hiding (HostName)
-import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
@@ -92,19 +91,19 @@ runTLS
     -> PortNumber
     -> ByteString
     -- ^ ALPN
-    -> (T.Manager -> IOBackend -> IO ())
+    -> (IOBackend -> IO ())
     -> IO ()
 runTLS settings creds host port alpn action =
     runTCPServer
         (settingsTimeout settings)
         (Just host)
         (show port)
-        $ \mgr th sock -> do
+        $ \_mgr th sock -> do
             backend <- mkBackend settings sock
             ctx <- contextNew backend params
             handshake ctx
             iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
-            action mgr iobackend
+            action iobackend
             bye ctx
   where
     params = getServerParams settings creds alpn
@@ -118,18 +117,18 @@ runTLSWithSocket
     -> Socket
     -> ByteString
     -- ^ ALPN
-    -> (T.Manager -> IOBackend -> IO ())
+    -> (IOBackend -> IO ())
     -> IO ()
 runTLSWithSocket settings creds s alpn action =
     runTCPServerWithSocket
         (settingsTimeout settings)
         s
-        $ \mgr th sock -> do
+        $ \_mgr th sock -> do
             backend <- mkBackend settings sock
             ctx <- contextNew backend params
             handshake ctx
             iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
-            r <- action mgr iobackend
+            r <- action iobackend
             bye ctx
             return r
   where
@@ -154,10 +153,10 @@ runH2C settings@Settings{..} host port server =
         settingsTimeout
         (Just host)
         (show port)
-        $ \mgr th sock -> do
+        $ \_mgr th sock -> do
             iobackend0 <- tcpIOBackend settings sock
             let iobackend = timeoutIOBackend th settings iobackend0
-            run' settings server mgr iobackend
+            run' settings server iobackend
 
 -- | Running an HTTP\/2 client over TCP.
 runH2CWithSocket :: Settings -> Socket -> Server -> IO ()
@@ -165,15 +164,15 @@ runH2CWithSocket settings@Settings{..} s server =
     runTCPServerWithSocket
         settingsTimeout
         s
-        $ \mgr th sock -> do
+        $ \_mgr th sock -> do
             iobackend0 <- tcpIOBackend settings sock
             let iobackend = timeoutIOBackend th settings iobackend0
-            run' settings server mgr iobackend
+            run' settings server iobackend
 
-run' :: Settings -> Server -> T.Manager -> IOBackend -> IO ()
-run' settings0@Settings{..} server mgr IOBackend{..} =
+run' :: Settings -> Server -> IOBackend -> IO ()
+run' settings0@Settings{..} server IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings0 mgr send recv mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 send recv mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> H2Server.run sconf conf server)
   where
@@ -198,14 +197,14 @@ runIO
     -> (ServerIO Stream -> IO (IO ()))
     -> IO ()
 runIO settings creds s action =
-    runTLSWithSocket settings creds s "h2" $ \mgr iobackend ->
-        runIO' settings action mgr iobackend
+    runTLSWithSocket settings creds s "h2" $ \iobackend ->
+        runIO' settings action iobackend
 
 runIO'
-    :: Settings -> (ServerIO Stream -> IO (IO ())) -> T.Manager -> IOBackend -> IO ()
-runIO' settings0@Settings{..} action mgr IOBackend{..} =
+    :: Settings -> (ServerIO Stream -> IO (IO ())) -> IOBackend -> IO ()
+runIO' settings0@Settings{..} action IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings0 mgr send recv mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 send recv mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> H2I.runIO sconf conf action)
   where
@@ -229,10 +228,10 @@ runIOH2C settings0@Settings{..} s action =
     runTCPServerWithSocket
         settingsTimeout
         s
-        $ \mgr th sock -> do
+        $ \_mgr th sock -> do
             iobackend0 <- tcpIOBackend settings0 sock
             let iobackend = timeoutIOBackend th settings0 iobackend0
-            runIO' settings0 action mgr iobackend
+            runIO' settings0 action iobackend
 
 ----------------------------------------------------------------
 

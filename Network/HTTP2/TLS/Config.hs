@@ -9,19 +9,17 @@ import Network.HTTP2.Client (Config)
 import qualified Network.HTTP2.Client as C
 import Network.Socket (SockAddr)
 import Network.Socket.BufferPool
-import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Server.Settings
 
 allocConfigForServer
     :: Settings
-    -> T.Manager
     -> (ByteString -> IO ())
     -> IO ByteString
     -> SockAddr
     -> SockAddr
     -> IO Config
-allocConfigForServer Settings{..} _mgr send recv mysa peersa = do
+allocConfigForServer Settings{..} send recv mysa peersa = do
     buf <- mallocBytes settingsSendBufferSize
     recvN <- makeRecvN "" recv
     let config =
