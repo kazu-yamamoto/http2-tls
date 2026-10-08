@@ -13,13 +13,11 @@ import Network.HTTP2.Client (Config)
 import qualified Network.HTTP2.Client as C
 import Network.Socket (SockAddr)
 import Network.Socket.BufferPool
-import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Server.Settings
 
 allocConfigForServer
     :: Settings
-    -> T.Manager
     -> (ByteString -> IO ())
     -> (STM () -> ByteString -> IO (Either () ()))
     -> IO ByteString
@@ -27,7 +25,7 @@ allocConfigForServer
     -> SockAddr
     -> SockAddr
     -> IO Config
-allocConfigForServer Settings{..} _mgr send sendWith recv recvWith mysa peersa = do
+allocConfigForServer Settings{..} send sendWith recv recvWith mysa peersa = do
     buf <- mallocBytes settingsSendBufferSize
     (recvN, recvNWith) <- makeRecvNs recv recvWith
     let config =

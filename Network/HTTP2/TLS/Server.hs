@@ -82,7 +82,6 @@ import Network.Socket (
     Socket,
  )
 import Network.TLS hiding (HostName)
-import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
@@ -99,7 +98,7 @@ runTLS
     -> PortNumber
     -> ByteString
     -- ^ ALPN
-    -> (T.Manager -> IOBackend -> IO ())
+    -> (IOBackend -> IO ())
     -> IO ()
 runTLS settings creds host port alpn action =
     runTCPServerWithSettings
@@ -107,14 +106,14 @@ runTLS settings creds host port alpn action =
         (settingsTimeout settings)
         (Just host)
         (show port)
-        $ \mgr th sock -> do
+        $ \_mgr th sock -> do
             giveUpVar <- newTVarIO retry
             recvGiveUpVar <- newTVarIO retry
             backend <- mkBackend settings giveUpVar recvGiveUpVar sock
             ctx <- contextNew backend params
             handshake ctx
             iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
-            action mgr iobackend
+            action iobackend
             byeGivingUp ctx
   where
     params = getServerParams settings creds alpn
@@ -128,21 +127,21 @@ runTLSWithSocket
     -> Socket
     -> ByteString
     -- ^ ALPN
-    -> (T.Manager -> IOBackend -> IO ())
+    -> (IOBackend -> IO ())
     -> IO ()
 runTLSWithSocket settings creds s alpn action =
     runTCPServerWithSocketAndSettings
         (tcpSettings settings)
         (settingsTimeout settings)
         s
-        $ \mgr th sock -> do
+        $ \_mgr th sock -> do
             giveUpVar <- newTVarIO retry
             recvGiveUpVar <- newTVarIO retry
             backend <- mkBackend settings giveUpVar recvGiveUpVar sock
             ctx <- contextNew backend params
             handshake ctx
             iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
-            r <- action mgr iobackend
+            r <- action iobackend
             byeGivingUp ctx
             return r
   where
@@ -171,10 +170,10 @@ runH2C settings0 host port server = do
         (settingsTimeout settings)
         (Just host)
         (show port)
-        $ \mgr th sock -> do
+        $ \_mgr th sock -> do
             iobackend0 <- tcpIOBackend settings sock
             let iobackend = timeoutIOBackend th settings iobackend0
-            run' settings goAway server mgr iobackend
+            run' settings goAway server iobackend
 
 -- | Running an HTTP\/2 client over TCP.
 runH2CWithSocket :: Settings -> Socket -> Server -> IO ()
@@ -184,15 +183,15 @@ runH2CWithSocket settings0 s server = do
         (tcpSettings $ byHTTP2 settings)
         (settingsTimeout settings)
         s
-        $ \mgr th sock -> do
+        $ \_mgr th sock -> do
             iobackend0 <- tcpIOBackend settings sock
             let iobackend = timeoutIOBackend th settings iobackend0
-            run' settings goAway server mgr iobackend
+            run' settings goAway server iobackend
 
-run' :: Settings -> STM () -> Server -> T.Manager -> IOBackend -> IO ()
-run' settings0@Settings{..} goAway server mgr IOBackend{..} =
+run' :: Settings -> STM () -> Server -> IOBackend -> IO ()
+run' settings0@Settings{..} goAway server IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings0 mgr send sendWith recv recvWith mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 send sendWith recv recvWith mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> endedNormally $ H2Server.runWith goAway sconf conf server)
   where
@@ -218,19 +217,18 @@ runIO
     -> IO ()
 runIO settings0 creds s action = do
     (settings, goAway) <- goingAway settings0
-    runTLSWithSocket (byHTTP2 settings) creds s "h2" $ \mgr iobackend ->
-        runIO' settings goAway action mgr iobackend
+    runTLSWithSocket (byHTTP2 settings) creds s "h2" $ \iobackend ->
+        runIO' settings goAway action iobackend
 
 runIO'
     :: Settings
     -> STM ()
     -> (ServerIO Stream -> IO (IO ()))
-    -> T.Manager
     -> IOBackend
     -> IO ()
-runIO' settings0@Settings{..} goAway action mgr IOBackend{..} =
+runIO' settings0@Settings{..} goAway action IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings0 mgr send sendWith recv recvWith mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 send sendWith recv recvWith mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> endedNormally $ H2I.runIOWith goAway sconf conf action)
   where
@@ -256,10 +254,10 @@ runIOH2C settings0 s action = do
         (tcpSettings $ byHTTP2 settings)
         (settingsTimeout settings)
         s
-        $ \mgr th sock -> do
+        $ \_mgr th sock -> do
             iobackend0 <- tcpIOBackend settings sock
             let iobackend = timeoutIOBackend th settings iobackend0
-            runIO' settings goAway action mgr iobackend
+            runIO' settings goAway action iobackend
 
 ----------------------------------------------------------------
 
