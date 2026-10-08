@@ -21,7 +21,7 @@ allocConfigForServer
     -> SockAddr
     -> SockAddr
     -> IO Config
-allocConfigForServer Settings{..} mgr send recv mysa peersa = do
+allocConfigForServer Settings{..} _mgr send recv mysa peersa = do
     buf <- mallocBytes settingsSendBufferSize
     recvN <- makeRecvN "" recv
     let config =
@@ -31,10 +31,9 @@ allocConfigForServer Settings{..} mgr send recv mysa peersa = do
                 , C.confSendAll = send
                 , C.confReadN = recvN
                 , C.confPositionReadMaker = C.defaultPositionReadMaker
-                , C.confTimeoutManager = mgr
+                , C.confTimeout = settingsTimeout * 1000000
                 , C.confMySockAddr = mysa
                 , C.confPeerSockAddr = peersa
-                , C.confReadNTimeout = False
                 }
     return config
 
@@ -48,10 +47,6 @@ allocConfigForClient tout send recv mysa peersa = do
     let wbufsiz = 4096 -- fixme
     buf <- mallocBytes wbufsiz
     recvN <- makeRecvN "" recv
-    -- A global manager does not exist.
-    -- So, a timeout manager is created per connection.
-    -- The receiver of http2 uses it as an idle timeout.
-    mgr <- T.initialize (tout * 1000000)
     let config =
             C.defaultConfig
                 { C.confWriteBuffer = buf
@@ -59,10 +54,9 @@ allocConfigForClient tout send recv mysa peersa = do
                 , C.confSendAll = send
                 , C.confReadN = recvN
                 , C.confPositionReadMaker = C.defaultPositionReadMaker
-                , C.confTimeoutManager = mgr
+                , C.confTimeout = tout * 1000000
                 , C.confMySockAddr = mysa
                 , C.confPeerSockAddr = peersa
-                , C.confReadNTimeout = False
                 }
     return config
 
