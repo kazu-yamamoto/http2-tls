@@ -66,6 +66,7 @@ import System.X509 (getSystemCertificateStore)
 import Network.HTTP2.TLS.Client.Settings
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
+import Network.HTTP2.TLS.Watchdog (newTLSWatchdog)
 import qualified Network.HTTP2.TLS.Server.Settings as Server
 import Network.HTTP2.TLS.Supported
 
@@ -161,7 +162,11 @@ runH2CWithConfig cliconf Settings{..} serverName port client =
     runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
-        recv <- mkRecvTCP Server.defaultSettings sock
+        -- Nothing here gives up on a read: the connection is http2's
+        -- for the whole of its life, and http2 ends it from the sender
+        -- when its own watchdog says so.
+        wd <- newTLSWatchdog 0
+        recv <- mkRecvTCP Server.defaultSettings wd sock
         run' cliconf' settingsTimeout (sendTCP sock) recv mysa peersa client
   where
     cliconf' :: ClientConfig

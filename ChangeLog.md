@@ -1,5 +1,19 @@
 # Revision history for http2-tls
 
+## 0.6.0
+
+* The timeout of a connection is now the watchdog of `time-manager`
+  rather than a `TimeManager` handle, and it covers the TLS handshake:
+  the connection records what it is doing, the watchdog decides whether
+  it has been doing it for too long, and a read that has to give up does
+  so by itself instead of being killed.  It is handed over to the http2
+  library once that library has the connection.
+* `runTLS` and `runTLSWithSocket` hand what they run an `IOBackend` and
+  nothing else; the `TimeManager` that was passed with it reached
+  nothing that reads it any more.
+* Requires `http2` with `confTimeout`, `time-manager` 0.4.1 and `recv`
+  0.1.3.
+
 ## 0.5.5
 
 * Client: `settingsTimeout` is now the idle timeout of the connection,

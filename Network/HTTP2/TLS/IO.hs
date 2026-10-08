@@ -12,11 +12,12 @@ import Network.Socket
 import Network.Socket.BufferPool
 import qualified Network.Socket.ByteString as NSB
 import Network.TLS hiding (HostName)
+import Network.HTTP2.Client (HTTP2Error (ConnectionIsTimeout))
 import System.IO.Error (isEOFError)
 import qualified System.IO.Error as E
-import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Server.Settings
+import Network.HTTP2.TLS.Watchdog
 
 ----------------------------------------------------------------
 
@@ -25,10 +26,16 @@ import Network.HTTP2.TLS.Server.Settings
 
 ----------------------------------------------------------------
 
-mkRecvTCP :: Settings -> Socket -> IO (IO ByteString)
-mkRecvTCP Settings{..} sock = do
+-- | A receiving function which gives up when the watchdog has given up
+--   on the connection, rather than waiting for the peer for ever.
+mkRecvTCP :: Settings -> TLSWatchdog -> Socket -> IO (IO ByteString)
+mkRecvTCP Settings{..} wd sock = do
     pool <- newBufferPool settingsReadBufferLowerLimit settingsReadBufferSize
-    return $ receive sock pool
+    return $ do
+        r <- receiveWith sock pool (timedOutSTM wd)
+        case r of
+            Left () -> E.throwIO ConnectionIsTimeout
+            Right bs -> return bs
 
 sendTCP :: Socket -> ByteString -> IO ()
 sendTCP sock = NSB.sendAll sock
@@ -52,15 +59,18 @@ data IOBackend = IOBackend
     , peerSockAddr :: SockAddr
     }
 
-timeoutIOBackend :: T.Handle -> Settings -> IOBackend -> IOBackend
-timeoutIOBackend th Settings{..} IOBackend{..} =
+-- | Reporting progress to the watchdog of the connection.  A read too
+--   small to be anything but a slowloris does not count; see
+--   'settingsSlowlorisSize'.
+watchedIOBackend :: TLSWatchdog -> Settings -> IOBackend -> IOBackend
+watchedIOBackend wd Settings{..} IOBackend{..} =
     IOBackend send' sendMany' recv' requestSock mySockAddr peerSockAddr
   where
-    send' bs = send bs >> T.tickle th
-    sendMany' bss = sendMany bss >> T.tickle th
+    send' bs = send bs >> progress wd
+    sendMany' bss = sendMany bss >> progress wd
     recv' = do
         bs <- recv
-        when (BS.length bs > settingsSlowlorisSize) $ T.tickle th
+        when (BS.length bs > settingsSlowlorisSize) $ progress wd
         return bs
 
 tlsIOBackend :: Context -> Socket -> IO IOBackend
@@ -77,9 +87,9 @@ tlsIOBackend ctx sock = do
             , peerSockAddr = peersa
             }
 
-tcpIOBackend :: Settings -> Socket -> IO IOBackend
-tcpIOBackend settings sock = do
-    recv' <- mkRecvTCP settings sock
+tcpIOBackend :: Settings -> TLSWatchdog -> Socket -> IO IOBackend
+tcpIOBackend settings wd sock = do
+    recv' <- mkRecvTCP settings wd sock
     mysa <- getSocketName sock
     peersa <- getPeerName sock
     return $
@@ -111,10 +121,10 @@ recvTLS ctx = E.handle onEOF $ recvData ctx
 
 ----------------------------------------------------------------
 
-mkBackend :: Settings -> Socket -> IO Backend
-mkBackend settings sock = do
+mkBackend :: Settings -> TLSWatchdog -> Socket -> IO Backend
+mkBackend settings wd sock = do
     let send' = sendTCP sock
-    recv' <- mkRecvTCP settings sock
+    recv' <- mkRecvTCP settings wd sock
     recvN <- makeRecvN "" recv'
     return
         Backend
