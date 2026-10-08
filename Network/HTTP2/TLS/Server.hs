@@ -55,6 +55,7 @@ module Network.HTTP2.TLS.Server (
     ServerIO (..),
 ) where
 
+import Control.Concurrent (myThreadId)
 import Control.Concurrent.STM (STM, atomically, check, newTVarIO, readTVar, retry, writeTVar)
 import qualified Control.Exception as E
 import Data.ByteString (ByteString)
@@ -74,8 +75,11 @@ import Network.HTTP2.Server (
 import qualified Network.HTTP2.Server as H2Server
 import Network.HTTP2.Server.Internal (ServerIO, Stream)
 import qualified Network.HTTP2.Server.Internal as H2I
-import Network.Run.TCP.Timeout hiding (ServerSettings (..))
-import qualified Network.Run.TCP.Timeout as TCP
+import Network.Run.TCP (
+    runTCPServerWithSettings,
+    runTCPServerWithSocketAndSettings,
+ )
+import qualified Network.Run.TCP as TCP
 import Network.Socket (
     HostName,
     PortNumber,
@@ -87,6 +91,7 @@ import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
 import Network.HTTP2.TLS.Server.Settings
 import Network.HTTP2.TLS.Supported
+import Network.HTTP2.TLS.Watchdog
 
 -- | Running a TLS client.
 --   'IOBackend' provides sending and receiving functions
@@ -103,16 +108,18 @@ runTLS
 runTLS settings creds host port alpn action =
     runTCPServerWithSettings
         (tcpSettings settings)
-        (settingsTimeout settings)
         (Just host)
         (show port)
-        $ \_mgr th sock -> do
+        $ \sock -> supervising settings $ \wd -> do
             giveUpVar <- newTVarIO retry
             recvGiveUpVar <- newTVarIO retry
-            backend <- mkBackend settings giveUpVar recvGiveUpVar sock
+            backend <- mkBackend settings wd giveUpVar recvGiveUpVar sock
             ctx <- contextNew backend params
             handshake ctx
-            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
+            iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
+            -- The connection is the action's from here: the http2 library
+            -- supervises it with a watchdog of its own.
+            handOver wd
             action iobackend
             byeGivingUp ctx
   where
@@ -132,15 +139,17 @@ runTLSWithSocket
 runTLSWithSocket settings creds s alpn action =
     runTCPServerWithSocketAndSettings
         (tcpSettings settings)
-        (settingsTimeout settings)
         s
-        $ \_mgr th sock -> do
+        $ \sock -> supervising settings $ \wd -> do
             giveUpVar <- newTVarIO retry
             recvGiveUpVar <- newTVarIO retry
-            backend <- mkBackend settings giveUpVar recvGiveUpVar sock
+            backend <- mkBackend settings wd giveUpVar recvGiveUpVar sock
             ctx <- contextNew backend params
             handshake ctx
-            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
+            iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
+            -- The connection is the action's from here: the http2 library
+            -- supervises it with a watchdog of its own.
+            handOver wd
             r <- action iobackend
             byeGivingUp ctx
             return r
@@ -167,12 +176,12 @@ runH2C settings0 host port server = do
     (settings, goAway) <- goingAway settings0
     runTCPServerWithSettings
         (tcpSettings $ byHTTP2 settings)
-        (settingsTimeout settings)
         (Just host)
         (show port)
-        $ \_mgr th sock -> do
-            iobackend0 <- tcpIOBackend settings sock
-            let iobackend = timeoutIOBackend th settings iobackend0
+        $ \sock -> supervising settings $ \wd -> do
+            iobackend0 <- tcpIOBackend settings wd sock
+            let iobackend = watchedIOBackend wd settings iobackend0
+            handOver wd
             run' settings goAway server iobackend
 
 -- | Running an HTTP\/2 client over TCP.
@@ -181,11 +190,11 @@ runH2CWithSocket settings0 s server = do
     (settings, goAway) <- goingAway settings0
     runTCPServerWithSocketAndSettings
         (tcpSettings $ byHTTP2 settings)
-        (settingsTimeout settings)
         s
-        $ \_mgr th sock -> do
-            iobackend0 <- tcpIOBackend settings sock
-            let iobackend = timeoutIOBackend th settings iobackend0
+        $ \sock -> supervising settings $ \wd -> do
+            iobackend0 <- tcpIOBackend settings wd sock
+            let iobackend = watchedIOBackend wd settings iobackend0
+            handOver wd
             run' settings goAway server iobackend
 
 run' :: Settings -> STM () -> Server -> IOBackend -> IO ()
@@ -252,14 +261,25 @@ runIOH2C settings0 s action = do
     (settings, goAway) <- goingAway settings0
     runTCPServerWithSocketAndSettings
         (tcpSettings $ byHTTP2 settings)
-        (settingsTimeout settings)
         s
-        $ \_mgr th sock -> do
-            iobackend0 <- tcpIOBackend settings sock
-            let iobackend = timeoutIOBackend th settings iobackend0
+        $ \sock -> supervising settings $ \wd -> do
+            iobackend0 <- tcpIOBackend settings wd sock
+            let iobackend = watchedIOBackend wd settings iobackend0
+            handOver wd
             runIO' settings goAway action iobackend
 
 ----------------------------------------------------------------
+
+-- | Running an action with the watchdog of this connection.
+--
+--   It starts before the TLS handshake, which is the part of a
+--   connection where the peer is least known, and is handed over once
+--   the action has the connection.
+supervising :: Settings -> (TLSWatchdog -> IO a) -> IO a
+supervising Settings{..} action = do
+    wd <- newTLSWatchdog $ settingsTimeout * 1000000
+    tid <- myThreadId
+    withWatchdog wd (E.throwTo tid ConnectionIsTimeout) $ action wd
 
 tcpSettings :: Settings -> TCP.ServerSettings
 tcpSettings settings =
