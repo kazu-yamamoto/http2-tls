@@ -54,7 +54,7 @@ data Settings = Settings
     -- ^ The window size of a connection (H2 and H2c)
     --
     -- >>> settingsConnectionWindowSize defaultSettings
-    -- 1048575
+    -- 16777216
     , settingsSessionManager :: SessionManager
     -- ^ TLS session manager (H2 and TLS)
     --
@@ -83,7 +83,7 @@ data Settings = Settings
     , settingsRstRateLimit :: Int
     -- ^ Maximum number of reset frames allowed per second (CVE-2023-44487)
     --
-    -- >>> settingsRstRateLimit
+    -- >>> settingsRstRateLimit defaultSettings
     -- 4
     }
 
