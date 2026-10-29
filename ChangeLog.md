@@ -1,5 +1,16 @@
 # Revision history for http2-tls
 
+
+## 0.5.6
+
+* Requires network-run 0.7, whose accept loop is stopped by being told
+  rather than by having the listening socket closed under it.  Nothing
+  here changes; the TCP server inherits it.
+* The receive of a connection is still ended by the time manager killing
+  the thread, which does not reach a socket call on Windows.  Giving up
+  on the receive instead needs a timeout which can be waited for in STM,
+  which time-manager does not offer yet.
+
 ## 0.5.5
 
 * Client: `settingsTimeout` is now the idle timeout of the connection,
