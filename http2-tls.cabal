@@ -10,6 +10,7 @@ synopsis:      Library for HTTP/2 over TLS
 description:   Using the HTTP/2 library over TLS
 category:      Network
 build-type:    Simple
+extra-source-files: ChangeLog.md
 
 source-repository head
     type:     git
