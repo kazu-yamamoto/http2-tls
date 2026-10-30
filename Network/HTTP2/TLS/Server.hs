@@ -34,6 +34,7 @@ module Network.HTTP2.TLS.Server (
     settingsEmptyFrameRateLimit,
     settingsSettingsRateLimit,
     settingsRstRateLimit,
+    settingsInstallShutdownHandler,
 
     -- * IO backend
     IOBackend,
@@ -68,7 +69,8 @@ import Network.HTTP2.Server (
 import qualified Network.HTTP2.Server as H2Server
 import Network.HTTP2.Server.Internal (ServerIO, Stream)
 import qualified Network.HTTP2.Server.Internal as H2I
-import Network.Run.TCP.Timeout
+import Network.Run.TCP.Timeout hiding (ServerSettings (..))
+import qualified Network.Run.TCP.Timeout as TCP
 import Network.Socket (
     HostName,
     PortNumber,
@@ -95,7 +97,8 @@ runTLS
     -> (T.Manager -> IOBackend -> IO ())
     -> IO ()
 runTLS settings creds host port alpn action =
-    runTCPServer
+    runTCPServerWithSettings
+        (tcpSettings settings)
         (settingsTimeout settings)
         (Just host)
         (show port)
@@ -121,7 +124,8 @@ runTLSWithSocket
     -> (T.Manager -> IOBackend -> IO ())
     -> IO ()
 runTLSWithSocket settings creds s alpn action =
-    runTCPServerWithSocket
+    runTCPServerWithSocketAndSettings
+        (tcpSettings settings)
         (settingsTimeout settings)
         s
         $ \mgr th sock -> do
@@ -150,7 +154,8 @@ runWithSocket settings creds s server =
 -- | Running an HTTP\/2 client over TCP.
 runH2C :: Settings -> HostName -> PortNumber -> Server -> IO ()
 runH2C settings@Settings{..} host port server =
-    runTCPServer
+    runTCPServerWithSettings
+        (tcpSettings settings)
         settingsTimeout
         (Just host)
         (show port)
@@ -162,7 +167,8 @@ runH2C settings@Settings{..} host port server =
 -- | Running an HTTP\/2 client over TCP.
 runH2CWithSocket :: Settings -> Socket -> Server -> IO ()
 runH2CWithSocket settings@Settings{..} s server =
-    runTCPServerWithSocket
+    runTCPServerWithSocketAndSettings
+        (tcpSettings settings)
         settingsTimeout
         s
         $ \mgr th sock -> do
@@ -226,13 +232,22 @@ runIO' settings0@Settings{..} action mgr IOBackend{..} =
 runIOH2C
     :: Settings -> Socket -> (ServerIO Stream -> IO (IO ())) -> IO ()
 runIOH2C settings0@Settings{..} s action =
-    runTCPServerWithSocket
+    runTCPServerWithSocketAndSettings
+        (tcpSettings settings0)
         settingsTimeout
         s
         $ \mgr th sock -> do
             iobackend0 <- tcpIOBackend settings0 sock
             let iobackend = timeoutIOBackend th settings0 iobackend0
             runIO' settings0 action mgr iobackend
+
+----------------------------------------------------------------
+
+tcpSettings :: Settings -> TCP.ServerSettings
+tcpSettings settings =
+    TCP.defaultServerSettings
+        { TCP.settingsInstallShutdownHandler = settingsInstallShutdownHandler settings
+        }
 
 ----------------------------------------------------------------
 

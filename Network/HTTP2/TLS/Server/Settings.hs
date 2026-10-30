@@ -85,6 +85,10 @@ data Settings = Settings
     --
     -- >>> settingsRstRateLimit defaultSettings
     -- 4
+    , settingsInstallShutdownHandler :: IO () -> IO ()
+    -- ^ An action to install a handler which stops the server.  The
+    --   first argument stops accepting; the connections being served are
+    --   not waited for.  The default does nothing.
     }
 
 {-# DEPRECATED settingsNumberOfWorkers "This field is meaningless now" #-}
@@ -109,4 +113,5 @@ defaultSettings =
         , settingsEmptyFrameRateLimit = 4
         , settingsSettingsRateLimit = 4
         , settingsRstRateLimit = 4
+        , settingsInstallShutdownHandler = const $ return ()
         }
