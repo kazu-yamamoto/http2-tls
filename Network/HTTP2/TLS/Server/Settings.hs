@@ -89,6 +89,12 @@ data Settings = Settings
     -- ^ An action to install a handler which stops the server.  The
     --   first argument stops accepting; the connections being served are
     --   not waited for.  The default does nothing.
+    , settingsUnsafeClose :: Bool
+    -- ^ Closing a connection with network's unsafe close, which skips the
+    --   IO manager.  Set this only when the action given to 'runTLS' or
+    --   'runTLSWithSocket' leaves no thread and no registered wait on the
+    --   socket by the time it returns.  The other entry points run http2,
+    --   which does not, and set it themselves.  The default is 'False'.
     }
 
 {-# DEPRECATED settingsNumberOfWorkers "This field is meaningless now" #-}
@@ -114,4 +120,5 @@ defaultSettings =
         , settingsSettingsRateLimit = 4
         , settingsRstRateLimit = 4
         , settingsInstallShutdownHandler = const $ return ()
+        , settingsUnsafeClose = False
         }

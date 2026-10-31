@@ -35,6 +35,7 @@ module Network.HTTP2.TLS.Server (
     settingsSettingsRateLimit,
     settingsRstRateLimit,
     settingsInstallShutdownHandler,
+    settingsUnsafeClose,
 
     -- * IO backend
     IOBackend,
@@ -143,19 +144,19 @@ runTLSWithSocket settings creds s alpn action =
 --   ALPN is "h2".
 run :: Settings -> Credentials -> HostName -> PortNumber -> Server -> IO ()
 run settings creds host port server =
-    runTLS settings creds host port "h2" $ run' settings server
+    runTLS (byHTTP2 settings) creds host port "h2" $ run' settings server
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
 --   ALPN is "h2".
 runWithSocket :: Settings -> Credentials -> Socket -> Server -> IO ()
 runWithSocket settings creds s server =
-    runTLSWithSocket settings creds s "h2" $ run' settings server
+    runTLSWithSocket (byHTTP2 settings) creds s "h2" $ run' settings server
 
 -- | Running an HTTP\/2 client over TCP.
 runH2C :: Settings -> HostName -> PortNumber -> Server -> IO ()
 runH2C settings@Settings{..} host port server =
     runTCPServerWithSettings
-        (tcpSettings settings)
+        (tcpSettings $ byHTTP2 settings)
         settingsTimeout
         (Just host)
         (show port)
@@ -168,7 +169,7 @@ runH2C settings@Settings{..} host port server =
 runH2CWithSocket :: Settings -> Socket -> Server -> IO ()
 runH2CWithSocket settings@Settings{..} s server =
     runTCPServerWithSocketAndSettings
-        (tcpSettings settings)
+        (tcpSettings $ byHTTP2 settings)
         settingsTimeout
         s
         $ \mgr th sock -> do
@@ -204,7 +205,7 @@ runIO
     -> (ServerIO Stream -> IO (IO ()))
     -> IO ()
 runIO settings creds s action =
-    runTLSWithSocket settings creds s "h2" $ \mgr iobackend ->
+    runTLSWithSocket (byHTTP2 settings) creds s "h2" $ \mgr iobackend ->
         runIO' settings action mgr iobackend
 
 runIO'
@@ -233,7 +234,7 @@ runIOH2C
     :: Settings -> Socket -> (ServerIO Stream -> IO (IO ())) -> IO ()
 runIOH2C settings0@Settings{..} s action =
     runTCPServerWithSocketAndSettings
-        (tcpSettings settings0)
+        (tcpSettings $ byHTTP2 settings0)
         settingsTimeout
         s
         $ \mgr th sock -> do
@@ -247,7 +248,12 @@ tcpSettings :: Settings -> TCP.ServerSettings
 tcpSettings settings =
     TCP.defaultServerSettings
         { TCP.settingsInstallShutdownHandler = settingsInstallShutdownHandler settings
+        , TCP.settingsUnsafeClose = settingsUnsafeClose settings
         }
+
+-- | For the entry points which run http2, which waits for its threads.
+byHTTP2 :: Settings -> Settings
+byHTTP2 settings = settings{settingsUnsafeClose = True}
 
 ----------------------------------------------------------------
 
