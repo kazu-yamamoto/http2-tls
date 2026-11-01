@@ -4,7 +4,7 @@
 module Network.HTTP2.TLS.IO where
 
 import qualified Control.Exception as E
-import Control.Monad (void, when)
+import Control.Monad (when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -84,7 +84,7 @@ tcpIOBackend settings sock = do
     peersa <- getPeerName sock
     return $
         IOBackend
-            { send = void . NSB.send sock
+            { send = sendTCP sock
             , sendMany = \_ -> return ()
             , recv = recv'
             , requestSock = sock
