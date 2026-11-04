@@ -43,6 +43,7 @@ module Network.HTTP2.TLS.Server (
     sendWith,
     sendMany,
     recv,
+    recvWith,
     requestSock,
     mySockAddr,
     peerSockAddr,
@@ -107,10 +108,11 @@ runTLS settings creds host port alpn action =
         (show port)
         $ \mgr th sock -> do
             giveUpVar <- newTVarIO retry
-            backend <- mkBackend settings giveUpVar sock
+            recvGiveUpVar <- newTVarIO retry
+            backend <- mkBackend settings giveUpVar recvGiveUpVar sock
             ctx <- contextNew backend params
             handshake ctx
-            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar ctx sock
+            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
             action mgr iobackend
             byeGivingUp ctx
   where
@@ -134,10 +136,11 @@ runTLSWithSocket settings creds s alpn action =
         s
         $ \mgr th sock -> do
             giveUpVar <- newTVarIO retry
-            backend <- mkBackend settings giveUpVar sock
+            recvGiveUpVar <- newTVarIO retry
+            backend <- mkBackend settings giveUpVar recvGiveUpVar sock
             ctx <- contextNew backend params
             handshake ctx
-            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar ctx sock
+            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
             r <- action mgr iobackend
             byeGivingUp ctx
             return r

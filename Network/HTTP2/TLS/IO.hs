@@ -32,13 +32,18 @@ import Network.HTTP2.TLS.Server.Settings
 --   first.  It waits in 'STM', so the timeout's kill reaches it on
 --   Windows too.
 mkRecvTCP :: Settings -> STM () -> Socket -> IO (IO ByteString)
-mkRecvTCP Settings{..} giveUp sock = do
+mkRecvTCP settings giveUp sock = do
+    recvWith' <- mkRecvTCPWith settings sock
+    return $ recvWith' giveUp >>= orTimeout
+
+-- | A receiving function which takes what it gives up on at each call.
+mkRecvTCPWith :: Settings -> Socket -> IO (STM () -> IO (Either () ByteString))
+mkRecvTCPWith Settings{..} sock = do
     pool <- newBufferPool settingsReadBufferLowerLimit settingsReadBufferSize
-    return $ do
-        r <- receiveWith sock pool giveUp
-        case r of
-            Left () -> E.throwIO ConnectionIsTimeout
-            Right bs -> return bs
+    return $ receiveWith sock pool
+
+orTimeout :: Either () a -> IO a
+orTimeout = either (\_ -> E.throwIO ConnectionIsTimeout) return
 
 sendTCP :: Socket -> ByteString -> IO ()
 sendTCP sock = NSB.sendAll sock
@@ -66,6 +71,12 @@ data IOBackend = IOBackend
     -- ^ Sending many.
     , recv :: IO ByteString
     -- ^ Receiving.
+    , recvWith :: STM () -> IO (Either () ByteString)
+    -- ^ Receiving which gives up when the 'STM' action fires first,
+    --   answering 'Left'.  Part of a TLS record may have been read by
+    --   then, so the connection is to be closed.
+    --
+    --   @since 0.5.7
     , requestSock :: Socket
     -- ^ The socket for the request
     , mySockAddr :: SockAddr
@@ -79,6 +90,7 @@ timeoutIOBackend th Settings{..} IOBackend{..} =
         , sendWith = sendWith'
         , sendMany = sendMany'
         , recv = recv'
+        , recvWith = recvWith'
         , ..
         }
   where
@@ -90,13 +102,18 @@ timeoutIOBackend th Settings{..} IOBackend{..} =
     sendMany' bss = sendMany bss >> T.tickle th
     recv' = do
         bs <- recv
-        when (BS.length bs > settingsSlowlorisSize) $ T.tickle th
+        tickleIfLarge bs
         return bs
+    recvWith' giveUp = do
+        r <- recvWith giveUp
+        either (\_ -> return ()) tickleIfLarge r
+        return r
+    tickleIfLarge bs = when (BS.length bs > settingsSlowlorisSize) $ T.tickle th
 
--- | The 'TVar' is the one given to 'mkBackend': what a send of the
---   backend gives up on.
-tlsIOBackend :: TVar (STM ()) -> Context -> Socket -> IO IOBackend
-tlsIOBackend giveUpVar ctx sock = do
+-- | The 'TVar's are the ones given to 'mkBackend': what a send and a
+--   receive of the backend give up on.
+tlsIOBackend :: TVar (STM ()) -> TVar (STM ()) -> Context -> Socket -> IO IOBackend
+tlsIOBackend giveUpVar recvGiveUpVar ctx sock = do
     mysa <- getSocketName sock
     peersa <- getPeerName sock
     return $
@@ -107,6 +124,10 @@ tlsIOBackend giveUpVar ctx sock = do
                 (Right () <$ sendTLS ctx bs) `E.catch` gaveUp
             , sendMany = sendManyTLS ctx
             , recv = recvTLS ctx
+            , recvWith = \giveUp -> do
+                atomically $ writeTVar recvGiveUpVar giveUp
+                ((Right <$> recvTLS ctx) `E.catch` gaveUp)
+                    `E.finally` atomically (writeTVar recvGiveUpVar retry)
             , requestSock = sock
             , mySockAddr = mysa
             , peerSockAddr = peersa
@@ -114,7 +135,7 @@ tlsIOBackend giveUpVar ctx sock = do
 
 tcpIOBackend :: Settings -> Socket -> IO IOBackend
 tcpIOBackend settings sock = do
-    recv' <- mkRecvTCP settings retry sock
+    recvWith' <- mkRecvTCPWith settings sock
     mysa <- getSocketName sock
     peersa <- getPeerName sock
     return $
@@ -122,7 +143,8 @@ tcpIOBackend settings sock = do
             { send = sendTCP sock
             , sendWith = sendTCPWith sock
             , sendMany = \_ -> return ()
-            , recv = recv'
+            , recv = recvWith' retry >>= orTimeout
+            , recvWith = recvWith'
             , requestSock = sock
             , mySockAddr = mysa
             , peerSockAddr = peersa
@@ -147,15 +169,17 @@ recvTLS ctx = E.handle onEOF $ recvData ctx
 
 ----------------------------------------------------------------
 
--- | A send of the backend gives up on what the 'TVar' holds, which the
---   http2 library sets once it sends through 'sendWith'.
-mkBackend :: Settings -> TVar (STM ()) -> Socket -> IO Backend
-mkBackend settings giveUpVar sock = do
+-- | A send of the backend gives up on what the first 'TVar' holds, which
+--   the http2 library sets once it sends through 'sendWith', and a
+--   receive on what the second holds, which 'recvWith' sets.
+mkBackend :: Settings -> TVar (STM ()) -> TVar (STM ()) -> Socket -> IO Backend
+mkBackend settings giveUpVar recvGiveUpVar sock = do
     let send' bs = do
             giveUp <- readTVarIO giveUpVar
             sendTCPWith sock giveUp bs
                 >>= either (\_ -> E.throwIO ConnectionIsTimeout) return
-    recv' <- mkRecvTCP settings retry sock
+    recvWith' <- mkRecvTCPWith settings sock
+    let recv' = readTVarIO recvGiveUpVar >>= recvWith' >>= orTimeout
     recvN <- makeRecvN "" recv'
     return
         Backend
