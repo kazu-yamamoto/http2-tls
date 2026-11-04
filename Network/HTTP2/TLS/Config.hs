@@ -3,6 +3,7 @@
 
 module Network.HTTP2.TLS.Config where
 
+import Control.Concurrent.STM (STM)
 import Data.ByteString (ByteString)
 import Foreign.Marshal.Alloc (free, mallocBytes)
 import Network.HTTP2.Client (Config)
@@ -17,11 +18,12 @@ allocConfigForServer
     :: Settings
     -> T.Manager
     -> (ByteString -> IO ())
+    -> (STM () -> ByteString -> IO (Either () ()))
     -> IO ByteString
     -> SockAddr
     -> SockAddr
     -> IO Config
-allocConfigForServer Settings{..} mgr send recv mysa peersa = do
+allocConfigForServer Settings{..} mgr send sendWith recv mysa peersa = do
     buf <- mallocBytes settingsSendBufferSize
     recvN <- makeRecvN "" recv
     let config =
@@ -29,6 +31,7 @@ allocConfigForServer Settings{..} mgr send recv mysa peersa = do
                 { C.confWriteBuffer = buf
                 , C.confBufferSize = settingsSendBufferSize
                 , C.confSendAll = send
+                , C.confSendAllWith = Just sendWith
                 , C.confReadN = recvN
                 , C.confPositionReadMaker = C.defaultPositionReadMaker
                 , C.confTimeoutManager = mgr

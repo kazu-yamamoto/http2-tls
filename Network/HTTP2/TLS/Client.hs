@@ -50,6 +50,7 @@ module Network.HTTP2.TLS.Client (
     settingsRstRateLimit,
 ) where
 
+import Control.Concurrent.STM (retry)
 import qualified Control.Exception as E
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS.C8
@@ -161,7 +162,7 @@ runH2CWithConfig cliconf Settings{..} serverName port client =
     runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
         mysa <- getSocketName sock
         peersa <- getPeerName sock
-        recv <- mkRecvTCP Server.defaultSettings sock
+        recv <- mkRecvTCP Server.defaultSettings retry sock
         run' cliconf' settingsTimeout (sendTCP sock) recv mysa peersa client
   where
     cliconf' :: ClientConfig

@@ -40,6 +40,7 @@ module Network.HTTP2.TLS.Server (
     -- * IO backend
     IOBackend,
     send,
+    sendWith,
     sendMany,
     recv,
     requestSock,
@@ -53,6 +54,7 @@ module Network.HTTP2.TLS.Server (
     ServerIO (..),
 ) where
 
+import Control.Concurrent.STM (newTVarIO, retry)
 import qualified Control.Exception as E
 import Data.ByteString (ByteString)
 import Network.HTTP2.Server (
@@ -104,12 +106,13 @@ runTLS settings creds host port alpn action =
         (Just host)
         (show port)
         $ \mgr th sock -> do
-            backend <- mkBackend settings sock
+            giveUpVar <- newTVarIO retry
+            backend <- mkBackend settings giveUpVar sock
             ctx <- contextNew backend params
             handshake ctx
-            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
+            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar ctx sock
             action mgr iobackend
-            bye ctx
+            byeGivingUp ctx
   where
     params = getServerParams settings creds alpn
 
@@ -130,12 +133,13 @@ runTLSWithSocket settings creds s alpn action =
         (settingsTimeout settings)
         s
         $ \mgr th sock -> do
-            backend <- mkBackend settings sock
+            giveUpVar <- newTVarIO retry
+            backend <- mkBackend settings giveUpVar sock
             ctx <- contextNew backend params
             handshake ctx
-            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend ctx sock
+            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar ctx sock
             r <- action mgr iobackend
-            bye ctx
+            byeGivingUp ctx
             return r
   where
     params = getServerParams settings creds alpn
@@ -180,7 +184,7 @@ runH2CWithSocket settings@Settings{..} s server =
 run' :: Settings -> Server -> T.Manager -> IOBackend -> IO ()
 run' settings0@Settings{..} server mgr IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings0 mgr send recv mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 mgr send sendWith recv mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> H2Server.run sconf conf server)
   where
@@ -212,7 +216,7 @@ runIO'
     :: Settings -> (ServerIO Stream -> IO (IO ())) -> T.Manager -> IOBackend -> IO ()
 runIO' settings0@Settings{..} action mgr IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings0 mgr send recv mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 mgr send sendWith recv mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> H2I.runIO sconf conf action)
   where
