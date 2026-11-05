@@ -55,7 +55,7 @@ module Network.HTTP2.TLS.Server (
     ServerIO (..),
 ) where
 
-import Control.Concurrent.STM (newTVarIO, retry)
+import Control.Concurrent.STM (STM, atomically, check, newTVarIO, readTVar, retry, writeTVar)
 import qualified Control.Exception as E
 import Data.ByteString (ByteString)
 import Network.HTTP2.Server (
@@ -150,46 +150,50 @@ runTLSWithSocket settings creds s alpn action =
 -- | Running an HTTP\/2 client over TLS (over TCP).
 --   ALPN is "h2".
 run :: Settings -> Credentials -> HostName -> PortNumber -> Server -> IO ()
-run settings creds host port server =
-    runTLS (byHTTP2 settings) creds host port "h2" $ run' settings server
+run settings0 creds host port server = do
+    (settings, goAway) <- goingAway settings0
+    runTLS (byHTTP2 settings) creds host port "h2" $ run' settings goAway server
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
 --   ALPN is "h2".
 runWithSocket :: Settings -> Credentials -> Socket -> Server -> IO ()
-runWithSocket settings creds s server =
-    runTLSWithSocket (byHTTP2 settings) creds s "h2" $ run' settings server
+runWithSocket settings0 creds s server = do
+    (settings, goAway) <- goingAway settings0
+    runTLSWithSocket (byHTTP2 settings) creds s "h2" $ run' settings goAway server
 
 -- | Running an HTTP\/2 client over TCP.
 runH2C :: Settings -> HostName -> PortNumber -> Server -> IO ()
-runH2C settings@Settings{..} host port server =
+runH2C settings0 host port server = do
+    (settings, goAway) <- goingAway settings0
     runTCPServerWithSettings
         (tcpSettings $ byHTTP2 settings)
-        settingsTimeout
+        (settingsTimeout settings)
         (Just host)
         (show port)
         $ \mgr th sock -> do
             iobackend0 <- tcpIOBackend settings sock
             let iobackend = timeoutIOBackend th settings iobackend0
-            run' settings server mgr iobackend
+            run' settings goAway server mgr iobackend
 
 -- | Running an HTTP\/2 client over TCP.
 runH2CWithSocket :: Settings -> Socket -> Server -> IO ()
-runH2CWithSocket settings@Settings{..} s server =
+runH2CWithSocket settings0 s server = do
+    (settings, goAway) <- goingAway settings0
     runTCPServerWithSocketAndSettings
         (tcpSettings $ byHTTP2 settings)
-        settingsTimeout
+        (settingsTimeout settings)
         s
         $ \mgr th sock -> do
             iobackend0 <- tcpIOBackend settings sock
             let iobackend = timeoutIOBackend th settings iobackend0
-            run' settings server mgr iobackend
+            run' settings goAway server mgr iobackend
 
-run' :: Settings -> Server -> T.Manager -> IOBackend -> IO ()
-run' settings0@Settings{..} server mgr IOBackend{..} =
+run' :: Settings -> STM () -> Server -> T.Manager -> IOBackend -> IO ()
+run' settings0@Settings{..} goAway server mgr IOBackend{..} =
     E.bracket
         (allocConfigForServer settings0 mgr send sendWith recv mySockAddr peerSockAddr)
         freeConfigForServer
-        (\conf -> H2Server.run sconf conf server)
+        (\conf -> H2Server.runWith goAway sconf conf server)
   where
     sconf =
         defaultServerConfig
@@ -211,17 +215,23 @@ runIO
     -> Socket
     -> (ServerIO Stream -> IO (IO ()))
     -> IO ()
-runIO settings creds s action =
+runIO settings0 creds s action = do
+    (settings, goAway) <- goingAway settings0
     runTLSWithSocket (byHTTP2 settings) creds s "h2" $ \mgr iobackend ->
-        runIO' settings action mgr iobackend
+        runIO' settings goAway action mgr iobackend
 
 runIO'
-    :: Settings -> (ServerIO Stream -> IO (IO ())) -> T.Manager -> IOBackend -> IO ()
-runIO' settings0@Settings{..} action mgr IOBackend{..} =
+    :: Settings
+    -> STM ()
+    -> (ServerIO Stream -> IO (IO ()))
+    -> T.Manager
+    -> IOBackend
+    -> IO ()
+runIO' settings0@Settings{..} goAway action mgr IOBackend{..} =
     E.bracket
         (allocConfigForServer settings0 mgr send sendWith recv mySockAddr peerSockAddr)
         freeConfigForServer
-        (\conf -> H2I.runIO sconf conf action)
+        (\conf -> H2I.runIOWith goAway sconf conf action)
   where
     sconf =
         defaultServerConfig
@@ -239,15 +249,16 @@ runIO' settings0@Settings{..} action mgr IOBackend{..} =
 
 runIOH2C
     :: Settings -> Socket -> (ServerIO Stream -> IO (IO ())) -> IO ()
-runIOH2C settings0@Settings{..} s action =
+runIOH2C settings0 s action = do
+    (settings, goAway) <- goingAway settings0
     runTCPServerWithSocketAndSettings
-        (tcpSettings $ byHTTP2 settings0)
-        settingsTimeout
+        (tcpSettings $ byHTTP2 settings)
+        (settingsTimeout settings)
         s
         $ \mgr th sock -> do
-            iobackend0 <- tcpIOBackend settings0 sock
-            let iobackend = timeoutIOBackend th settings0 iobackend0
-            runIO' settings0 action mgr iobackend
+            iobackend0 <- tcpIOBackend settings sock
+            let iobackend = timeoutIOBackend th settings iobackend0
+            runIO' settings goAway action mgr iobackend
 
 ----------------------------------------------------------------
 
@@ -261,6 +272,17 @@ tcpSettings settings =
 -- | For the entry points which run http2, which waits for its threads.
 byHTTP2 :: Settings -> Settings
 byHTTP2 settings = settings{settingsUnsafeClose = True}
+
+-- | Stopping the server also tells each HTTP\/2 connection to go away:
+--   GOAWAY, and closing once the streams it has taken are done.
+goingAway :: Settings -> IO (Settings, STM ())
+goingAway settings = do
+    var <- newTVarIO False
+    let install stop =
+            settingsInstallShutdownHandler settings $
+                stop >> atomically (writeTVar var True)
+    return
+        (settings{settingsInstallShutdownHandler = install}, readTVar var >>= check)
 
 ----------------------------------------------------------------
 

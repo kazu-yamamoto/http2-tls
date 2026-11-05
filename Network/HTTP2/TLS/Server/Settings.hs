@@ -88,7 +88,9 @@ data Settings = Settings
     , settingsInstallShutdownHandler :: IO () -> IO ()
     -- ^ An action to install a handler which stops the server.  The
     --   first argument stops accepting; the connections being served are
-    --   not waited for.  The default does nothing.
+    --   not waited for.  Under the entry points which run HTTP\/2, it also
+    --   sends each connection GOAWAY, which closes it once the streams it
+    --   has taken are done.  The default does nothing.
     , settingsUnsafeClose :: Bool
     -- ^ Closing a connection with network's unsafe close, which skips the
     --   IO manager.  Set this only when the action given to 'runTLS' or
