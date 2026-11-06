@@ -58,6 +58,7 @@ module Network.HTTP2.TLS.Server (
 import Control.Concurrent.STM (STM, atomically, check, newTVarIO, readTVar, retry, writeTVar)
 import qualified Control.Exception as E
 import Data.ByteString (ByteString)
+import Network.HTTP2.Client (HTTP2Error (..))
 import Network.HTTP2.Server (
     Server,
     connectionWindowSize,
@@ -193,7 +194,7 @@ run' settings0@Settings{..} goAway server mgr IOBackend{..} =
     E.bracket
         (allocConfigForServer settings0 mgr send sendWith recv recvWith mySockAddr peerSockAddr)
         freeConfigForServer
-        (\conf -> H2Server.runWith goAway sconf conf server)
+        (\conf -> endedNormally $ H2Server.runWith goAway sconf conf server)
   where
     sconf =
         defaultServerConfig
@@ -231,7 +232,7 @@ runIO' settings0@Settings{..} goAway action mgr IOBackend{..} =
     E.bracket
         (allocConfigForServer settings0 mgr send sendWith recv recvWith mySockAddr peerSockAddr)
         freeConfigForServer
-        (\conf -> H2I.runIOWith goAway sconf conf action)
+        (\conf -> endedNormally $ H2I.runIOWith goAway sconf conf action)
   where
     sconf =
         defaultServerConfig
@@ -283,6 +284,14 @@ goingAway settings = do
                 stop >> atomically (writeTVar var True)
     return
         (settings{settingsInstallShutdownHandler = install}, readTVar var >>= check)
+
+-- | http2 ends a connection which has run its course with
+--   'ConnectionIsClosed'.  Taken as returning, so that close_notify is
+--   sent after it, as for any other action.
+endedNormally :: IO () -> IO ()
+endedNormally = E.handle $ \e -> case e of
+    ConnectionIsClosed -> return ()
+    _ -> E.throwIO e
 
 ----------------------------------------------------------------
 
