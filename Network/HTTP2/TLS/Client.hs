@@ -50,7 +50,7 @@ module Network.HTTP2.TLS.Client (
     settingsRstRateLimit,
 ) where
 
-import Control.Concurrent.STM (retry)
+import Control.Concurrent.STM (newTVarIO, retry)
 import qualified Control.Exception as E
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS.C8
@@ -121,15 +121,31 @@ runTLSWithConfig
     -- ^ ALPN
     -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
-runTLSWithConfig cliconf settings@Settings{..} serverName port alpn action =
+runTLSWithConfig cliconf settings serverName port alpn action =
+    runTLSWithBackend cliconf settings serverName port alpn $ \ctx IOBackend{..} ->
+        action ctx mySockAddr peerSockAddr
+
+-- | 'runTLSWithConfig' handing over an 'IOBackend' too, whose send and
+--   receive can be given up on, as the server's.
+runTLSWithBackend
+    :: ClientConfig
+    -> Settings
+    -> HostName
+    -> PortNumber
+    -> ByteString
+    -> (Context -> IOBackend -> IO a)
+    -> IO a
+runTLSWithBackend cliconf settings@Settings{..} serverName port alpn action =
     runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
-        mysa <- getSocketName sock
-        peersa <- getPeerName sock
         params <- getClientParams settings sni port alpn
-        ctx <- contextNew sock params
+        giveUpVar <- newTVarIO retry
+        recvGiveUpVar <- newTVarIO retry
+        backend <- mkBackend Server.defaultSettings giveUpVar recvGiveUpVar sock
+        ctx <- contextNew backend params
         handshake ctx
-        r <- action ctx mysa peersa
-        bye ctx
+        iobackend <- tlsIOBackend giveUpVar recvGiveUpVar ctx sock
+        r <- action ctx iobackend
+        byeGivingUp ctx
         return r
   where
     sni = fromMaybe (H2Client.authority cliconf) $ settingsServerNameOverride
@@ -142,15 +158,8 @@ runTLSWithConfig cliconf settings@Settings{..} serverName port alpn action =
 runWithConfig
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
 runWithConfig cliconf settings serverName port client =
-    runTLSWithConfig cliconf settings serverName port "h2" $ \ctx mysa peersa ->
-        run'
-            cliconf'
-            (settingsTimeout settings)
-            (sendTLS ctx)
-            (recvTLS ctx)
-            mysa
-            peersa
-            client
+    runTLSWithBackend cliconf settings serverName port "h2" $ \_ iobackend ->
+        run' cliconf' (settingsTimeout settings) iobackend client
   where
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "https"}
@@ -160,10 +169,8 @@ runH2CWithConfig
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
 runH2CWithConfig cliconf Settings{..} serverName port client =
     runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
-        mysa <- getSocketName sock
-        peersa <- getPeerName sock
-        recv <- mkRecvTCP Server.defaultSettings retry sock
-        run' cliconf' settingsTimeout (sendTCP sock) recv mysa peersa client
+        iobackend <- tcpIOBackend Server.defaultSettings sock
+        run' cliconf' settingsTimeout iobackend client
   where
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "http"}
@@ -172,18 +179,10 @@ runH2CWithConfig cliconf Settings{..} serverName port client =
             { TCP.settingsOpenClientSocket = settingsOpenClientSocket
             }
 
-run'
-    :: ClientConfig
-    -> Int
-    -> (ByteString -> IO ())
-    -> IO ByteString
-    -> SockAddr
-    -> SockAddr
-    -> Client a
-    -> IO a
-run' cliconf tout send recv mysa peersa client =
+run' :: ClientConfig -> Int -> IOBackend -> Client a -> IO a
+run' cliconf tout IOBackend{..} client =
     E.bracket
-        (allocConfigForClient tout send recv mysa peersa)
+        (allocConfigForClient tout send sendWith recv recvWith mySockAddr peerSockAddr)
         freeConfigForClient
         (\conf -> H2Client.run cliconf conf client)
 
