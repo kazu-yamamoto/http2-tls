@@ -153,10 +153,17 @@ tcpIOBackend settings sock = do
 ----------------------------------------------------------------
 
 sendTLS :: Context -> ByteString -> IO ()
-sendTLS ctx = sendData ctx . LBS.fromStrict
+sendTLS ctx = afterCloseNotify . sendData ctx . LBS.fromStrict
 
 sendManyTLS :: Context -> [ByteString] -> IO ()
-sendManyTLS ctx = sendData ctx . LBS.fromChunks
+sendManyTLS ctx = afterCloseNotify . sendData ctx . LBS.fromChunks
+
+-- | tls answers the peer's close_notify with its own, so a send after it
+--   has nowhere to go: dropped, as the GOAWAY which closes the connection.
+afterCloseNotify :: IO () -> IO ()
+afterCloseNotify = E.handle $ \e -> case e of
+    PostHandshake Error_EOF -> return ()
+    _ -> E.throwIO e
 
 -- TLS version of recv (decrypting) without a cache.
 recvTLS :: Context -> IO ByteString
