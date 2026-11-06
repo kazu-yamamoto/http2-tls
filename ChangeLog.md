@@ -1,6 +1,11 @@
 # Revision history for http2-tls
 
 
+## 0.5.8
+
+* Send close_notify after an HTTP/2 connection the server ends.
+  [#28](https://github.com/kazu-yamamoto/http2-tls/pull/28)
+
 ## 0.5.7
 
 * A server can be stopped through `settingsInstallShutdownHandler`: the
