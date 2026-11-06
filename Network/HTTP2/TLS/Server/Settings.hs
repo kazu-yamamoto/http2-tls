@@ -87,10 +87,10 @@ data Settings = Settings
     -- 4
     , settingsInstallShutdownHandler :: IO () -> IO ()
     -- ^ An action to install a handler which stops the server.  The
-    --   first argument stops accepting; the connections being served are
-    --   not waited for.  Under the entry points which run HTTP\/2, it also
-    --   sends each connection GOAWAY, which closes it once the streams it
-    --   has taken are done.  The default does nothing.
+    --   first argument stops accepting, and the server returns once the
+    --   connections being served are done.  Under the entry points which
+    --   run HTTP\/2, it also sends each connection GOAWAY, which closes it
+    --   once the streams it has taken are done.  The default does nothing.
     --
     --   @since 0.5.7
     , settingsUnsafeClose :: Bool
