@@ -191,7 +191,7 @@ runH2CWithSocket settings0 s server = do
 run' :: Settings -> STM () -> Server -> T.Manager -> IOBackend -> IO ()
 run' settings0@Settings{..} goAway server mgr IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings0 mgr send sendWith recv mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 mgr send sendWith recv recvWith mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> H2Server.runWith goAway sconf conf server)
   where
@@ -229,7 +229,7 @@ runIO'
     -> IO ()
 runIO' settings0@Settings{..} goAway action mgr IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings0 mgr send sendWith recv mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 mgr send sendWith recv recvWith mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> H2I.runIOWith goAway sconf conf action)
   where
