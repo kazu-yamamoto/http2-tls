@@ -1,6 +1,27 @@
 # Revision history for http2-tls
 
 
+## 0.5.7
+
+* A server can be stopped through `settingsInstallShutdownHandler`: the
+  accept loop of network-run is told to stop, and each HTTP/2 connection
+  is sent GOAWAY through http2's `runWith` and `runIOWith`.  A connection
+  being served used to run on until its idle timeout.
+* `settingsUnsafeClose` is passed to network-run.  The entry points which
+  run http2 set it themselves; `runTLS` and `runTLSWithSocket` leave it to
+  the caller.
+* `IOBackend` gains `sendWith` and `recvWith`, a send and a receive which
+  give up when an `STM` action fires first.  They wait in STM, so the
+  timeout's kill reaches them on Windows too.  The http2 library is given
+  them as `confSendAllWith` and `confReadNWith`, on the server and the
+  client, so that it stops a receiver without interrupting it.
+* The client runs over the same backends as the server.
+* All of a frame is sent over h2c.  A single send could take part of the
+  bytes and drop the rest.
+* A send after the peer's close_notify is dropped.  The client's closing
+  GOAWAY used to escape `run` as `PostHandshake Error_EOF`.
+* Requires http2 5.4.13, network 3.2.12 and network-run 0.7.1.
+
 ## 0.5.6
 
 * Requires network-run 0.7, whose accept loop is stopped by being told

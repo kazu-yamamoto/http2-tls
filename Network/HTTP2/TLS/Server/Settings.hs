@@ -91,12 +91,16 @@ data Settings = Settings
     --   not waited for.  Under the entry points which run HTTP\/2, it also
     --   sends each connection GOAWAY, which closes it once the streams it
     --   has taken are done.  The default does nothing.
+    --
+    --   @since 0.5.7
     , settingsUnsafeClose :: Bool
     -- ^ Closing a connection with network's unsafe close, which skips the
     --   IO manager.  Set this only when the action given to 'runTLS' or
     --   'runTLSWithSocket' leaves no thread and no registered wait on the
     --   socket by the time it returns.  The other entry points run http2,
     --   which does not, and set it themselves.  The default is 'False'.
+    --
+    --   @since 0.5.7
     }
 
 {-# DEPRECATED settingsNumberOfWorkers "This field is meaningless now" #-}
