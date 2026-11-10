@@ -1,6 +1,6 @@
 cabal-version: >=1.10
 name:          http2-tls
-version:       0.5.8
+version:       0.5.9
 license:       BSD3
 license-file:  LICENSE
 maintainer:    Kazu Yamamoto <kazu@iij.ad.jp>
@@ -45,7 +45,7 @@ library
         http2 >=5.4.13 && <5.5,
         network >=3.2.12,
         network-control >=0.1 && <0.2,
-        network-run >=0.7.1 && <0.8,
+        network-run >=0.8 && <0.9,
         recv >=0.1.3 && <0.2,
         stm >=2.4,
         time-manager >=0.5 && <0.6,
