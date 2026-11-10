@@ -1,6 +1,11 @@
 # Revision history for http2-tls
 
 
+## 0.5.9
+
+* Return once the connections are done when told to stop.
+  [#29](https://github.com/kazu-yamamoto/http2-tls/pull/29)
+
 ## 0.5.8
 
 * Send close_notify after an HTTP/2 connection the server ends.
