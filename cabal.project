@@ -1,0 +1,14 @@
+packages: .
+
+-- http2 (confTimeout) and time-manager 0.5.3 (System.Watchdog) are not
+-- released yet.
+source-repository-package
+  type: git
+  location: https://github.com/kazu-yamamoto/http2.git
+  tag: ff32894472a7fc149185b8683172615cdc08ee46
+
+source-repository-package
+  type: git
+  location: https://github.com/kazu-yamamoto/wai.git
+  tag: 5a4ca27a57f0b9c84d9f88c754ada4e2ab532775
+  subdir: time-manager

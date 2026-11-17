@@ -45,7 +45,7 @@ library
         crypton-x509-validation >=1.9 && <1.11,
         http2 >=5.4.13 && <5.5,
         network >=3.2.12,
-        network-control >=0.1 && <0.2,
+        network-control >=0.2 && <0.3,
         network-run >=0.8 && <0.9,
         recv >=0.1.3 && <0.2,
         stm >=2.4,
