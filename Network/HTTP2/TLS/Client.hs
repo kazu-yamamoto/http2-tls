@@ -67,6 +67,7 @@ import System.X509 (getSystemCertificateStore)
 import Network.HTTP2.TLS.Client.Settings
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
+import Network.HTTP2.TLS.Watchdog (newTLSWatchdog)
 import qualified Network.HTTP2.TLS.Server.Settings as Server
 import Network.HTTP2.TLS.Supported
 
@@ -140,7 +141,11 @@ runTLSWithBackend cliconf settings@Settings{..} serverName port alpn action =
         params <- getClientParams settings sni port alpn
         giveUpVar <- newTVarIO retry
         recvGiveUpVar <- newTVarIO retry
-        backend <- mkBackend Server.defaultSettings giveUpVar recvGiveUpVar sock
+        -- Nothing here gives up by itself: the connection is http2's for
+        -- the whole of its life, and http2 ends it when its own watchdog
+        -- says so.
+        wd <- newTLSWatchdog 0
+        backend <- mkBackend Server.defaultSettings wd giveUpVar recvGiveUpVar sock
         ctx <- contextNew backend params
         handshake ctx
         iobackend <- tlsIOBackend giveUpVar recvGiveUpVar ctx sock
@@ -169,7 +174,8 @@ runH2CWithConfig
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
 runH2CWithConfig cliconf Settings{..} serverName port client =
     runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
-        iobackend <- tcpIOBackend Server.defaultSettings sock
+        wd <- newTLSWatchdog 0
+        iobackend <- tcpIOBackend Server.defaultSettings wd sock
         run' cliconf' settingsTimeout iobackend client
   where
     cliconf' :: ClientConfig

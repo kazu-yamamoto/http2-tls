@@ -13,13 +13,11 @@ import Network.HTTP2.Client (Config)
 import qualified Network.HTTP2.Client as C
 import Network.Socket (SockAddr)
 import Network.Socket.BufferPool
-import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Server.Settings
 
 allocConfigForServer
     :: Settings
-    -> T.Manager
     -> (ByteString -> IO ())
     -> (STM () -> ByteString -> IO (Either () ()))
     -> IO ByteString
@@ -27,7 +25,7 @@ allocConfigForServer
     -> SockAddr
     -> SockAddr
     -> IO Config
-allocConfigForServer Settings{..} mgr send sendWith recv recvWith mysa peersa = do
+allocConfigForServer Settings{..} send sendWith recv recvWith mysa peersa = do
     buf <- mallocBytes settingsSendBufferSize
     (recvN, recvNWith) <- makeRecvNs recv recvWith
     let config =
@@ -39,10 +37,9 @@ allocConfigForServer Settings{..} mgr send sendWith recv recvWith mysa peersa = 
                 , C.confReadN = recvN
                 , C.confReadNWith = Just recvNWith
                 , C.confPositionReadMaker = C.defaultPositionReadMaker
-                , C.confTimeoutManager = mgr
+                , C.confTimeout = settingsTimeout * 1000000
                 , C.confMySockAddr = mysa
                 , C.confPeerSockAddr = peersa
-                , C.confReadNTimeout = False
                 }
     return config
 
@@ -80,10 +77,6 @@ allocConfigForClient tout send sendWith recv recvWith mysa peersa = do
     let wbufsiz = 4096 -- fixme
     buf <- mallocBytes wbufsiz
     (recvN, recvNWith) <- makeRecvNs recv recvWith
-    -- A global manager does not exist.
-    -- So, a timeout manager is created per connection.
-    -- The receiver of http2 uses it as an idle timeout.
-    mgr <- T.initialize (tout * 1000000)
     let config =
             C.defaultConfig
                 { C.confWriteBuffer = buf
@@ -93,10 +86,9 @@ allocConfigForClient tout send sendWith recv recvWith mysa peersa = do
                 , C.confReadN = recvN
                 , C.confReadNWith = Just recvNWith
                 , C.confPositionReadMaker = C.defaultPositionReadMaker
-                , C.confTimeoutManager = mgr
+                , C.confTimeout = tout * 1000000
                 , C.confMySockAddr = mysa
                 , C.confPeerSockAddr = peersa
-                , C.confReadNTimeout = False
                 }
     return config
 

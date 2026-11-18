@@ -55,6 +55,7 @@ module Network.HTTP2.TLS.Server (
     ServerIO (..),
 ) where
 
+import Control.Concurrent (myThreadId)
 import Control.Concurrent.STM (STM, atomically, check, newTVarIO, readTVar, retry, writeTVar)
 import qualified Control.Exception as E
 import Data.ByteString (ByteString)
@@ -74,20 +75,23 @@ import Network.HTTP2.Server (
 import qualified Network.HTTP2.Server as H2Server
 import Network.HTTP2.Server.Internal (ServerIO, Stream)
 import qualified Network.HTTP2.Server.Internal as H2I
-import Network.Run.TCP.Timeout hiding (ServerSettings (..))
-import qualified Network.Run.TCP.Timeout as TCP
+import Network.Run.TCP (
+    runTCPServerWithSettings,
+    runTCPServerWithSocketAndSettings,
+ )
+import qualified Network.Run.TCP as TCP
 import Network.Socket (
     HostName,
     PortNumber,
     Socket,
  )
 import Network.TLS hiding (HostName)
-import qualified System.TimeManager as T
 
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
 import Network.HTTP2.TLS.Server.Settings
 import Network.HTTP2.TLS.Supported
+import Network.HTTP2.TLS.Watchdog
 
 -- | Running a TLS client.
 --   'IOBackend' provides sending and receiving functions
@@ -99,22 +103,24 @@ runTLS
     -> PortNumber
     -> ByteString
     -- ^ ALPN
-    -> (T.Manager -> IOBackend -> IO ())
+    -> (IOBackend -> IO ())
     -> IO ()
 runTLS settings creds host port alpn action =
     runTCPServerWithSettings
         (tcpSettings settings)
-        (settingsTimeout settings)
         (Just host)
         (show port)
-        $ \mgr th sock -> do
+        $ \sock -> supervising settings $ \wd -> do
             giveUpVar <- newTVarIO retry
             recvGiveUpVar <- newTVarIO retry
-            backend <- mkBackend settings giveUpVar recvGiveUpVar sock
+            backend <- mkBackend settings wd giveUpVar recvGiveUpVar sock
             ctx <- contextNew backend params
             handshake ctx
-            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
-            action mgr iobackend
+            iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
+            -- The connection is the action's from here: the http2 library
+            -- supervises it with a watchdog of its own.
+            handOver wd
+            action iobackend
             byeGivingUp ctx
   where
     params = getServerParams settings creds alpn
@@ -128,21 +134,23 @@ runTLSWithSocket
     -> Socket
     -> ByteString
     -- ^ ALPN
-    -> (T.Manager -> IOBackend -> IO ())
+    -> (IOBackend -> IO ())
     -> IO ()
 runTLSWithSocket settings creds s alpn action =
     runTCPServerWithSocketAndSettings
         (tcpSettings settings)
-        (settingsTimeout settings)
         s
-        $ \mgr th sock -> do
+        $ \sock -> supervising settings $ \wd -> do
             giveUpVar <- newTVarIO retry
             recvGiveUpVar <- newTVarIO retry
-            backend <- mkBackend settings giveUpVar recvGiveUpVar sock
+            backend <- mkBackend settings wd giveUpVar recvGiveUpVar sock
             ctx <- contextNew backend params
             handshake ctx
-            iobackend <- timeoutIOBackend th settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
-            r <- action mgr iobackend
+            iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
+            -- The connection is the action's from here: the http2 library
+            -- supervises it with a watchdog of its own.
+            handOver wd
+            r <- action iobackend
             byeGivingUp ctx
             return r
   where
@@ -168,13 +176,13 @@ runH2C settings0 host port server = do
     (settings, goAway) <- goingAway settings0
     runTCPServerWithSettings
         (tcpSettings $ byHTTP2 settings)
-        (settingsTimeout settings)
         (Just host)
         (show port)
-        $ \mgr th sock -> do
-            iobackend0 <- tcpIOBackend settings sock
-            let iobackend = timeoutIOBackend th settings iobackend0
-            run' settings goAway server mgr iobackend
+        $ \sock -> supervising settings $ \wd -> do
+            iobackend0 <- tcpIOBackend settings wd sock
+            let iobackend = watchedIOBackend wd settings iobackend0
+            handOver wd
+            run' settings goAway server iobackend
 
 -- | Running an HTTP\/2 client over TCP.
 runH2CWithSocket :: Settings -> Socket -> Server -> IO ()
@@ -182,17 +190,17 @@ runH2CWithSocket settings0 s server = do
     (settings, goAway) <- goingAway settings0
     runTCPServerWithSocketAndSettings
         (tcpSettings $ byHTTP2 settings)
-        (settingsTimeout settings)
         s
-        $ \mgr th sock -> do
-            iobackend0 <- tcpIOBackend settings sock
-            let iobackend = timeoutIOBackend th settings iobackend0
-            run' settings goAway server mgr iobackend
+        $ \sock -> supervising settings $ \wd -> do
+            iobackend0 <- tcpIOBackend settings wd sock
+            let iobackend = watchedIOBackend wd settings iobackend0
+            handOver wd
+            run' settings goAway server iobackend
 
-run' :: Settings -> STM () -> Server -> T.Manager -> IOBackend -> IO ()
-run' settings0@Settings{..} goAway server mgr IOBackend{..} =
+run' :: Settings -> STM () -> Server -> IOBackend -> IO ()
+run' settings0@Settings{..} goAway server IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings0 mgr send sendWith recv recvWith mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 send sendWith recv recvWith mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> endedNormally $ H2Server.runWith goAway sconf conf server)
   where
@@ -218,19 +226,18 @@ runIO
     -> IO ()
 runIO settings0 creds s action = do
     (settings, goAway) <- goingAway settings0
-    runTLSWithSocket (byHTTP2 settings) creds s "h2" $ \mgr iobackend ->
-        runIO' settings goAway action mgr iobackend
+    runTLSWithSocket (byHTTP2 settings) creds s "h2" $ \iobackend ->
+        runIO' settings goAway action iobackend
 
 runIO'
     :: Settings
     -> STM ()
     -> (ServerIO Stream -> IO (IO ()))
-    -> T.Manager
     -> IOBackend
     -> IO ()
-runIO' settings0@Settings{..} goAway action mgr IOBackend{..} =
+runIO' settings0@Settings{..} goAway action IOBackend{..} =
     E.bracket
-        (allocConfigForServer settings0 mgr send sendWith recv recvWith mySockAddr peerSockAddr)
+        (allocConfigForServer settings0 send sendWith recv recvWith mySockAddr peerSockAddr)
         freeConfigForServer
         (\conf -> endedNormally $ H2I.runIOWith goAway sconf conf action)
   where
@@ -254,14 +261,25 @@ runIOH2C settings0 s action = do
     (settings, goAway) <- goingAway settings0
     runTCPServerWithSocketAndSettings
         (tcpSettings $ byHTTP2 settings)
-        (settingsTimeout settings)
         s
-        $ \mgr th sock -> do
-            iobackend0 <- tcpIOBackend settings sock
-            let iobackend = timeoutIOBackend th settings iobackend0
-            runIO' settings goAway action mgr iobackend
+        $ \sock -> supervising settings $ \wd -> do
+            iobackend0 <- tcpIOBackend settings wd sock
+            let iobackend = watchedIOBackend wd settings iobackend0
+            handOver wd
+            runIO' settings goAway action iobackend
 
 ----------------------------------------------------------------
+
+-- | Running an action with the watchdog of this connection.
+--
+--   It starts before the TLS handshake, which is the part of a
+--   connection where the peer is least known, and is handed over once
+--   the action has the connection.
+supervising :: Settings -> (TLSWatchdog -> IO a) -> IO a
+supervising Settings{..} action = do
+    wd <- newTLSWatchdog $ settingsTimeout * 1000000
+    tid <- myThreadId
+    withWatchdog wd (E.throwTo tid ConnectionIsTimeout) $ action wd
 
 tcpSettings :: Settings -> TCP.ServerSettings
 tcpSettings settings =
@@ -306,7 +324,7 @@ getServerParams Settings{..} creds alpn =
         , serverShared = shared
         , serverHooks = hooks
         , serverDebug = debug
-        , serverEarlyDataSize = settingsEarlyDataSize
+        , serverEarlyDataSize = fromIntegral settingsEarlyDataSize
         }
   where
     shared =
