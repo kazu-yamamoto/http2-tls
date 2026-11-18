@@ -42,6 +42,7 @@ module Network.HTTP2.TLS.Client (
     settingsUseEarlyData,
     settingsOnServerFinished,
     settingsTimeout,
+    settingsGiveUp,
 
     -- ** Rate limits
     settingsPingRateLimit,
@@ -145,7 +146,7 @@ runTLSWithBackend cliconf settings@Settings{..} serverName port alpn action =
         -- the whole of its life, and http2 ends it when its own watchdog
         -- says so.
         wd <- newTLSWatchdog 0
-        backend <- mkBackend Server.defaultSettings wd giveUpVar recvGiveUpVar sock
+        backend <- mkBackend Server.defaultSettings wd giveUpVar recvGiveUpVar settingsGiveUp sock
         ctx <- contextNew backend params
         handshake ctx
         iobackend <- tlsIOBackend giveUpVar recvGiveUpVar ctx sock
@@ -164,7 +165,7 @@ runWithConfig
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
 runWithConfig cliconf settings serverName port client =
     runTLSWithBackend cliconf settings serverName port "h2" $ \_ iobackend ->
-        run' cliconf' (settingsTimeout settings) iobackend client
+        run' cliconf' settings iobackend client
   where
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "https"}
@@ -172,11 +173,11 @@ runWithConfig cliconf settings serverName port client =
 -- | Running an HTTP\/2 client over TCP.
 runH2CWithConfig
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
-runH2CWithConfig cliconf Settings{..} serverName port client =
+runH2CWithConfig cliconf settings@Settings{..} serverName port client =
     runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
         wd <- newTLSWatchdog 0
         iobackend <- tcpIOBackend Server.defaultSettings wd sock
-        run' cliconf' settingsTimeout iobackend client
+        run' cliconf' settings iobackend client
   where
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "http"}
@@ -185,12 +186,12 @@ runH2CWithConfig cliconf Settings{..} serverName port client =
             { TCP.settingsOpenClientSocket = settingsOpenClientSocket
             }
 
-run' :: ClientConfig -> Int -> IOBackend -> Client a -> IO a
-run' cliconf tout IOBackend{..} client =
+run' :: ClientConfig -> Settings -> IOBackend -> Client a -> IO a
+run' cliconf Settings{..} IOBackend{..} client =
     E.bracket
-        (allocConfigForClient tout send sendWith recv recvWith mySockAddr peerSockAddr)
+        (allocConfigForClient settingsTimeout send sendWith recv recvWith mySockAddr peerSockAddr)
         freeConfigForClient
-        (\conf -> H2Client.run cliconf conf client)
+        (\conf -> H2Client.runGivingUp settingsGiveUp cliconf conf client)
 
 defaultClientConfig
     :: Settings

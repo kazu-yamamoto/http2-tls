@@ -1,5 +1,6 @@
 module Network.HTTP2.TLS.Client.Settings where
 
+import Control.Concurrent.STM (STM, retry)
 import Data.X509.CertificateStore (CertificateStore)
 import Data.X509.Validation (validateDefault)
 import Network.Socket
@@ -131,6 +132,16 @@ data Settings = Settings
     --
     -- >>> settingsTimeout defaultSettings
     -- 0
+    , settingsGiveUp :: STM ()
+    -- ^ Once this succeeds, the connection is given up: the TLS handshake
+    --   and what is sent and received after it (All).  To give up
+    --   connecting too, open the socket with
+    --   'Network.Run.TCP.openClientSocketGivingUp' in
+    --   'settingsOpenClientSocket'.
+    --
+    -- Default: 'retry'
+    --
+    -- @since 0.6.0
     }
 
 -- | Default settings.
@@ -159,4 +170,5 @@ defaultSettings =
         , settingsSettingsRateLimit = 4
         , settingsRstRateLimit = 4
         , settingsTimeout = 0
+        , settingsGiveUp = retry
         }
