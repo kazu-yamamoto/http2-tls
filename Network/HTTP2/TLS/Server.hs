@@ -113,7 +113,7 @@ runTLS settings creds host port alpn action =
         $ \sock -> supervising settings $ \wd -> do
             giveUpVar <- newTVarIO retry
             recvGiveUpVar <- newTVarIO retry
-            backend <- mkBackend settings wd giveUpVar recvGiveUpVar sock
+            backend <- mkBackend settings wd giveUpVar recvGiveUpVar retry sock
             ctx <- contextNew backend params
             handshake ctx
             iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
@@ -143,7 +143,7 @@ runTLSWithSocket settings creds s alpn action =
         $ \sock -> supervising settings $ \wd -> do
             giveUpVar <- newTVarIO retry
             recvGiveUpVar <- newTVarIO retry
-            backend <- mkBackend settings wd giveUpVar recvGiveUpVar sock
+            backend <- mkBackend settings wd giveUpVar recvGiveUpVar retry sock
             ctx <- contextNew backend params
             handshake ctx
             iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock

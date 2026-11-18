@@ -69,6 +69,10 @@ data IOBackend = IOBackend
     --   @since 0.5.7
     , sendMany :: [ByteString] -> IO ()
     -- ^ Sending many.
+    , sendManyWith :: STM () -> [ByteString] -> IO (Either () ())
+    -- ^ 'sendMany' which gives up as 'sendWith' does.
+    --
+    --   @since 0.6.0
     , recv :: IO ByteString
     -- ^ Receiving.
     , recvWith :: STM () -> IO (Either () ByteString)
@@ -92,6 +96,7 @@ watchedIOBackend wd Settings{..} IOBackend{..} =
         { send = send'
         , sendWith = sendWith'
         , sendMany = sendMany'
+        , sendManyWith = sendManyWith'
         , recv = recv'
         , recvWith = recvWith'
         , ..
@@ -103,6 +108,10 @@ watchedIOBackend wd Settings{..} IOBackend{..} =
         when (isRight r) $ progress wd
         return r
     sendMany' bss = sendMany bss >> progress wd
+    sendManyWith' giveUp bss = do
+        r <- sendManyWith giveUp bss
+        when (isRight r) $ progress wd
+        return r
     recv' = do
         bs <- recv
         tickleIfLarge bs
@@ -126,6 +135,9 @@ tlsIOBackend giveUpVar recvGiveUpVar ctx sock = do
                 atomically $ writeTVar giveUpVar giveUp
                 (Right () <$ sendTLS ctx bs) `E.catch` gaveUp
             , sendMany = sendManyTLS ctx
+            , sendManyWith = \giveUp bss -> do
+                atomically $ writeTVar giveUpVar giveUp
+                (Right () <$ sendManyTLS ctx bss) `E.catch` gaveUp
             , recv = recvTLS ctx
             , recvWith = \giveUp -> do
                 atomically $ writeTVar recvGiveUpVar giveUp
@@ -149,6 +161,7 @@ tcpIOBackend settings wd sock = do
             { send = \bs -> sendTCPWith sock expired bs >>= orTimeout
             , sendWith = \giveUp -> sendTCPWith sock (giveUp `orElse` expired)
             , sendMany = \_ -> return ()
+            , sendManyWith = \giveUp -> sendTCPWith sock (giveUp `orElse` expired) . BS.concat
             , recv = recvWith' expired >>= orTimeout
             , recvWith = \giveUp -> recvWith' (giveUp `orElse` expired)
             , requestSock = sock
@@ -186,11 +199,12 @@ recvTLS ctx = E.handle onEOF $ recvData ctx
 --   the http2 library sets once it sends through 'sendWith', and a
 --   receive on what the second holds, which 'recvWith' sets.
 --   Both also give up once the watchdog has given up on the connection,
---   which is how the TLS handshake is timed out.
+--   which is how the TLS handshake is timed out, or the last 'STM' action
+--   has succeeded.
 mkBackend
-    :: Settings -> TLSWatchdog -> TVar (STM ()) -> TVar (STM ()) -> Socket -> IO Backend
-mkBackend settings wd giveUpVar recvGiveUpVar sock = do
-    let expired = timedOutSTM wd
+    :: Settings -> TLSWatchdog -> TVar (STM ()) -> TVar (STM ()) -> STM () -> Socket -> IO Backend
+mkBackend settings wd giveUpVar recvGiveUpVar giveUpAll sock = do
+    let expired = timedOutSTM wd `orElse` giveUpAll
         send' bs = do
             giveUp <- readTVarIO giveUpVar
             sendTCPWith sock (giveUp `orElse` expired) bs
