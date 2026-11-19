@@ -12,6 +12,8 @@
   nothing else; the `TimeManager` that was passed with it reached
   nothing that reads it any more.
 * Requires `http2` with `confTimeout` and `time-manager` 0.5.3.
+* Give up a client with a result, and take the STM action last.
+  [#32](https://github.com/kazu-yamamoto/http2-tls/pull/32)
 
 ## 0.5.9
 
