@@ -1,19 +1,24 @@
 packages: .
 
--- http2 and http-semantics with the give-up of a client, and time-manager
--- 0.5.3 (System.Watchdog) are not released yet.
+-- http2, http-semantics, network-run (openClientSocketWith) and
+-- time-manager 0.5.3 (System.Watchdog) are not released yet.
 source-repository-package
   type: git
   location: https://github.com/kazu-yamamoto/http2.git
-  tag: b057d779f6650fec2af11e927874153df4250b0e
+  tag: a5bff0ec8dc828fdcbdddc27b4fbe975844c63bb
 
 source-repository-package
   type: git
   location: https://github.com/kazu-yamamoto/http-semantics.git
-  tag: 93ac752ec26e1b8a16b135d368a0d634f6d6f5fe
+  tag: aceec4c31a946dde86ae5cb5c191a903c6059dcd
+
+source-repository-package
+  type: git
+  location: https://github.com/kazu-yamamoto/network-run.git
+  tag: 01d464214d9345bc138095d29e676b9ca5444dbd
 
 source-repository-package
   type: git
   location: https://github.com/kazu-yamamoto/wai.git
-  tag: 9cb425c7076f0337fd86a7ef55cb247d4e5f70a3
+  tag: 9a9072994d24cc322fa8cd927eecf271ee8cce0b
   subdir: time-manager
