@@ -33,7 +33,7 @@ allocConfigForServer Settings{..} send sendWith recv recvWith mysa peersa = do
                 { C.confWriteBuffer = buf
                 , C.confBufferSize = settingsSendBufferSize
                 , C.confSendAll = send
-                , C.confSendAllWith = Just $ flip sendWith
+                , C.confSendAllWith = Just sendWith
                 , C.confReadN = recvN
                 , C.confReadNWith = Just recvNWith
                 , C.confPositionReadMaker = C.defaultPositionReadMaker
@@ -45,19 +45,26 @@ allocConfigForServer Settings{..} send sendWith recv recvWith mysa peersa = do
 
 -- | 'makeRecvN' over the receive, and the same over the one which gives
 --   up, sharing what is left over.  One given up on part-way answers with
---   an empty string, as at end of input.
+--   'Left', and what it had read is dropped.
 makeRecvNs
     :: IO ByteString
     -> (STM () -> IO (Either () ByteString))
-    -> IO (RecvN, STM () -> RecvN)
+    -> IO (RecvN, Int -> STM () -> IO (Either () ByteString))
 makeRecvNs recv recvWith = do
     stopRef <- newIORef Nothing
-    let recv' = readIORef stopRef >>= maybe recv (fmap (either (const "") id) . recvWith)
+    gaveUpRef <- newIORef False
+    let gaveUp = writeIORef gaveUpRef True >> return ""
+        recv' = readIORef stopRef >>= maybe recv (\stop -> recvWith stop >>= either (const gaveUp) return)
     recvN <- makeRecvN "" recv'
-    let recvNWith stop n = do
+    let recvNWith n stop = do
+            writeIORef gaveUpRef False
             writeIORef stopRef $ Just stop
             bs <- recvN n `E.finally` writeIORef stopRef Nothing
-            return $ if BS.length bs == n then bs else ""
+            g <- readIORef gaveUpRef
+            return $
+                if g
+                    then Left ()
+                    else Right $ if BS.length bs == n then bs else ""
     return (recvN, recvNWith)
 
 -- | Deallocating the resource of the simple configuration.
@@ -82,7 +89,7 @@ allocConfigForClient tout send sendWith recv recvWith mysa peersa = do
                 { C.confWriteBuffer = buf
                 , C.confBufferSize = wbufsiz
                 , C.confSendAll = send
-                , C.confSendAllWith = Just $ flip sendWith
+                , C.confSendAllWith = Just sendWith
                 , C.confReadN = recvN
                 , C.confReadNWith = Just recvNWith
                 , C.confPositionReadMaker = C.defaultPositionReadMaker
