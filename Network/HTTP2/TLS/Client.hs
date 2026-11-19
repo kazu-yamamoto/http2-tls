@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | Running an HTTP\/2 client over TLS.
 module Network.HTTP2.TLS.Client (
@@ -20,6 +21,11 @@ module Network.HTTP2.TLS.Client (
     runWithConfig,
     runH2CWithConfig,
     runTLSWithConfig,
+
+    -- ** Giving up
+    runGivingUp,
+    runH2CGivingUp,
+    runTLSGivingUp,
 
     -- * Settings
     Settings,
@@ -42,7 +48,6 @@ module Network.HTTP2.TLS.Client (
     settingsUseEarlyData,
     settingsOnServerFinished,
     settingsTimeout,
-    settingsGiveUp,
 
     -- ** Rate limits
     settingsPingRateLimit,
@@ -51,8 +56,9 @@ module Network.HTTP2.TLS.Client (
     settingsRstRateLimit,
 ) where
 
-import Control.Concurrent.STM (newTVarIO, retry)
+import Control.Concurrent.STM (STM, atomically, newTVarIO, orElse, retry)
 import qualified Control.Exception as E
+import Control.Monad (void)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS.C8
 import Data.Maybe (fromMaybe)
@@ -68,9 +74,9 @@ import System.X509 (getSystemCertificateStore)
 import Network.HTTP2.TLS.Client.Settings
 import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
-import Network.HTTP2.TLS.Watchdog (newTLSWatchdog)
 import qualified Network.HTTP2.TLS.Server.Settings as Server
 import Network.HTTP2.TLS.Supported
+import Network.HTTP2.TLS.Watchdog (newTLSWatchdog)
 
 ----------------------------------------------------------------
 -- Default API
@@ -124,8 +130,29 @@ runTLSWithConfig
     -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
 runTLSWithConfig cliconf settings serverName port alpn action =
-    runTLSWithBackend cliconf settings serverName port alpn $ \ctx IOBackend{..} ->
+    runTLSWithBackend cliconf settings serverName port alpn retry $ \ctx IOBackend{..} ->
         action ctx mySockAddr peerSockAddr
+
+-- | 'runTLSWithConfig', giving up once the 'STM' action succeeds:
+--   connecting, the TLS handshake, and what the action sends and
+--   receives.  What the action gave is returned as 'Left'.  An action
+--   already done by then is not given up on.
+--
+--   @since 0.6.0
+runTLSGivingUp
+    :: ClientConfig
+    -> Settings
+    -> HostName
+    -> PortNumber
+    -> ByteString
+    -- ^ ALPN
+    -> (Context -> SockAddr -> SockAddr -> IO a)
+    -> STM g
+    -> IO (Either g a)
+runTLSGivingUp cliconf settings serverName port alpn action giveUp =
+    givingUp giveUp $ \giveUp' ->
+        runTLSWithBackend cliconf settings serverName port alpn giveUp' $ \ctx IOBackend{..} ->
+            action ctx mySockAddr peerSockAddr
 
 -- | 'runTLSWithConfig' handing over an 'IOBackend' too, whose send and
 --   receive can be given up on, as the server's.
@@ -135,10 +162,11 @@ runTLSWithBackend
     -> HostName
     -> PortNumber
     -> ByteString
+    -> STM ()
     -> (Context -> IOBackend -> IO a)
     -> IO a
-runTLSWithBackend cliconf settings@Settings{..} serverName port alpn action =
-    runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
+runTLSWithBackend cliconf settings@Settings{..} serverName port alpn giveUp action =
+    runTCPClientWithSettings (tcpSettings settings giveUp) serverName (show port) $ \sock -> do
         params <- getClientParams settings sni port alpn
         giveUpVar <- newTVarIO retry
         recvGiveUpVar <- newTVarIO retry
@@ -146,7 +174,8 @@ runTLSWithBackend cliconf settings@Settings{..} serverName port alpn action =
         -- the whole of its life, and http2 ends it when its own watchdog
         -- says so.
         wd <- newTLSWatchdog 0
-        backend <- mkBackend Server.defaultSettings wd giveUpVar recvGiveUpVar settingsGiveUp sock
+        backend <-
+            mkBackend Server.defaultSettings wd giveUpVar recvGiveUpVar giveUp sock
         ctx <- contextNew backend params
         handshake ctx
         iobackend <- tlsIOBackend giveUpVar recvGiveUpVar ctx sock
@@ -155,17 +184,35 @@ runTLSWithBackend cliconf settings@Settings{..} serverName port alpn action =
         return r
   where
     sni = fromMaybe (H2Client.authority cliconf) $ settingsServerNameOverride
-    tcpSettings =
-        TCP.defaultSettings
-            { TCP.settingsOpenClientSocket = settingsOpenClientSocket
-            }
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
 runWithConfig
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
 runWithConfig cliconf settings serverName port client =
-    runTLSWithBackend cliconf settings serverName port "h2" $ \_ iobackend ->
-        run' cliconf' settings iobackend client
+    runTLSWithBackend cliconf settings serverName port "h2" retry $ \_ iobackend ->
+        run' cliconf' settings iobackend client retry
+  where
+    cliconf' :: ClientConfig
+    cliconf' = cliconf{H2Client.scheme = "https"}
+
+-- | 'runWithConfig', giving up once the 'STM' action succeeds:
+--   connecting, the TLS handshake, and the HTTP\/2 connection, which is
+--   closed with a GOAWAY of NO_ERROR.  What the action gave is returned
+--   as 'Left'.  A client already done by then is not given up on.
+--
+--   @since 0.6.0
+runGivingUp
+    :: ClientConfig
+    -> Settings
+    -> HostName
+    -> PortNumber
+    -> Client a
+    -> STM g
+    -> IO (Either g a)
+runGivingUp cliconf settings serverName port client giveUp =
+    givingUp giveUp $ \giveUp' ->
+        runTLSWithBackend cliconf settings serverName port "h2" giveUp' $ \_ iobackend ->
+            run' cliconf' settings iobackend client giveUp'
   where
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "https"}
@@ -173,25 +220,77 @@ runWithConfig cliconf settings serverName port client =
 -- | Running an HTTP\/2 client over TCP.
 runH2CWithConfig
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
-runH2CWithConfig cliconf settings@Settings{..} serverName port client =
-    runTCPClientWithSettings tcpSettings serverName (show port) $ \sock -> do
+runH2CWithConfig cliconf settings serverName port client =
+    runH2C' cliconf settings serverName port client retry
+
+-- | 'runH2CWithConfig', giving up as 'runGivingUp' does.
+--
+--   @since 0.6.0
+runH2CGivingUp
+    :: ClientConfig
+    -> Settings
+    -> HostName
+    -> PortNumber
+    -> Client a
+    -> STM g
+    -> IO (Either g a)
+runH2CGivingUp cliconf settings serverName port client giveUp =
+    givingUp giveUp $ runH2C' cliconf settings serverName port client
+
+runH2C'
+    :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> STM () -> IO a
+runH2C' cliconf settings serverName port client giveUp =
+    runTCPClientWithSettings (tcpSettings settings giveUp) serverName (show port) $ \sock -> do
         wd <- newTLSWatchdog 0
         iobackend <- tcpIOBackend Server.defaultSettings wd sock
-        run' cliconf' settings iobackend client
+        run' cliconf' settings iobackend client giveUp
   where
     cliconf' :: ClientConfig
     cliconf' = cliconf{H2Client.scheme = "http"}
-    tcpSettings =
-        TCP.defaultSettings
-            { TCP.settingsOpenClientSocket = settingsOpenClientSocket
-            }
 
-run' :: ClientConfig -> Settings -> IOBackend -> Client a -> IO a
-run' cliconf Settings{..} IOBackend{..} client =
+run' :: ClientConfig -> Settings -> IOBackend -> Client a -> STM () -> IO a
+run' cliconf Settings{..} IOBackend{..} client giveUp =
     E.bracket
-        (allocConfigForClient settingsTimeout send sendWith recv recvWith mySockAddr peerSockAddr)
+        ( allocConfigForClient
+            settingsTimeout
+            send
+            sendWith
+            recv
+            recvWith
+            mySockAddr
+            peerSockAddr
+        )
         freeConfigForClient
-        (\conf -> H2Client.runGivingUp settingsGiveUp cliconf conf client)
+        ( \conf ->
+            H2Client.runGivingUp cliconf conf client giveUp
+                >>= either (\_ -> E.throwIO GivenUp) return
+        )
+
+tcpSettings :: Settings -> STM () -> TCP.Settings
+tcpSettings Settings{..} giveUp =
+    TCP.defaultSettings
+        { TCP.settingsOpenClientSocket = \ai ->
+            settingsOpenClientSocket ai giveUp
+                >>= either (\_ -> E.throwIO GivenUp) return
+        }
+
+-- | Thrown inside once given up on, and turned into 'Left' outside.
+data GivenUp = GivenUp deriving (Show)
+
+instance E.Exception GivenUp
+
+-- | Running an action with what it gives up on, and returning what the
+--   'STM' action gave as 'Left' once it is given up on.  An action
+--   already done by then is not given up on.
+givingUp :: STM g -> (STM () -> IO a) -> IO (Either g a)
+givingUp giveUp action = do
+    r <- E.try $ action $ void giveUp
+    case r of
+        Right x -> return $ Right x
+        -- Whatever the action ended with, it was given up on.
+        Left (e :: E.SomeException) -> do
+            mg <- atomically $ (Just <$> giveUp) `orElse` return Nothing
+            maybe (E.throwIO e) (return . Left) mg
 
 defaultClientConfig
     :: Settings

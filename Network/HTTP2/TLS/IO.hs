@@ -1,20 +1,22 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Network.HTTP2.TLS.IO where
 
 import Control.Concurrent.STM
 import qualified Control.Exception as E
-import Control.Monad (when)
+import Control.Monad (void, when)
 import Data.ByteString (ByteString)
-import Data.Either (isRight)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
+import Data.Either (isRight)
+import Network.HTTP2.Client (HTTP2Error, pattern ConnectionIsTimeout)
 import Network.Socket
 import Network.Socket.BufferPool
 import qualified Network.Socket.ByteString as NSB
 import Network.TLS hiding (HostName)
-import Network.HTTP2.Client (HTTP2Error (..))
 import System.IO.Error (isEOFError)
 import qualified System.IO.Error as E
 
@@ -37,7 +39,7 @@ mkRecvTCP settings giveUp sock = do
     return $ recvWith' giveUp >>= orTimeout
 
 -- | A receiving function which takes what it gives up on at each call.
-mkRecvTCPWith :: Settings -> Socket -> IO (STM () -> IO (Either () ByteString))
+mkRecvTCPWith :: Settings -> Socket -> IO (STM g -> IO (Either g ByteString))
 mkRecvTCPWith Settings{..} sock = do
     pool <- newBufferPool settingsReadBufferLowerLimit settingsReadBufferSize
     return $ receiveWith sock pool
@@ -49,8 +51,22 @@ sendTCP :: Socket -> ByteString -> IO ()
 sendTCP sock = NSB.sendAll sock
 
 -- | 'sendTCP' which gives up when the 'STM' action fires first.
-sendTCPWith :: Socket -> STM () -> ByteString -> IO (Either () ())
-sendTCPWith sock giveUp bs = NSB.sendAllWith sock bs giveUp
+sendTCPWith :: Socket -> ByteString -> STM g -> IO (Either g ())
+sendTCPWith = NSB.sendAllWith
+
+-- | Giving up on what the user gives, or with 'ConnectionIsTimeout' on
+--   what the connection gives.
+orExpired
+    :: (STM (Either g ()) -> IO (Either (Either g ()) a))
+    -> STM g
+    -> STM ()
+    -> IO (Either g a)
+orExpired io giveUp expired = do
+    r <- io $ (Left <$> giveUp) `orElse` (Right <$> expired)
+    case r of
+        Right x -> return $ Right x
+        Left (Left g) -> return $ Left g
+        Left (Right ()) -> E.throwIO ConnectionIsTimeout
 
 ----------------------------------------------------------------
 
@@ -61,26 +77,26 @@ sendTCPWith sock giveUp bs = NSB.sendAllWith sock bs giveUp
 data IOBackend = IOBackend
     { send :: ByteString -> IO ()
     -- ^ Sending.
-    , sendWith :: STM () -> ByteString -> IO (Either () ())
-    -- ^ Sending which gives up when the 'STM' action fires first,
-    --   answering 'Left'.  Part of the data may have gone by then, so the
-    --   connection is to be closed.
+    , sendWith :: forall g. ByteString -> STM g -> IO (Either g ())
+    -- ^ Sending which gives up when the 'STM' action succeeds first,
+    --   returning what it gave as 'Left'.  Part of the data may have gone
+    --   by then, so the connection is to be closed.
     --
-    --   @since 0.5.7
+    --   @since 0.6.0
     , sendMany :: [ByteString] -> IO ()
     -- ^ Sending many.
-    , sendManyWith :: STM () -> [ByteString] -> IO (Either () ())
+    , sendManyWith :: forall g. [ByteString] -> STM g -> IO (Either g ())
     -- ^ 'sendMany' which gives up as 'sendWith' does.
     --
     --   @since 0.6.0
     , recv :: IO ByteString
     -- ^ Receiving.
-    , recvWith :: STM () -> IO (Either () ByteString)
-    -- ^ Receiving which gives up when the 'STM' action fires first,
-    --   answering 'Left'.  Part of a TLS record may have been read by
-    --   then, so the connection is to be closed.
+    , recvWith :: forall g. STM g -> IO (Either g ByteString)
+    -- ^ Receiving which gives up when the 'STM' action succeeds first,
+    --   returning what it gave as 'Left'.  Part of a TLS record may have
+    --   been read by then, so the connection is to be closed.
     --
-    --   @since 0.5.7
+    --   @since 0.6.0
     , requestSock :: Socket
     -- ^ The socket for the request
     , mySockAddr :: SockAddr
@@ -103,19 +119,22 @@ watchedIOBackend wd Settings{..} IOBackend{..} =
         }
   where
     send' bs = send bs >> progress wd
-    sendWith' giveUp bs = do
-        r <- sendWith giveUp bs
+    sendWith' :: ByteString -> STM g -> IO (Either g ())
+    sendWith' bs giveUp = do
+        r <- sendWith bs giveUp
         when (isRight r) $ progress wd
         return r
     sendMany' bss = sendMany bss >> progress wd
-    sendManyWith' giveUp bss = do
-        r <- sendManyWith giveUp bss
+    sendManyWith' :: [ByteString] -> STM g -> IO (Either g ())
+    sendManyWith' bss giveUp = do
+        r <- sendManyWith bss giveUp
         when (isRight r) $ progress wd
         return r
     recv' = do
         bs <- recv
         tickleIfLarge bs
         return bs
+    recvWith' :: STM g -> IO (Either g ByteString)
     recvWith' giveUp = do
         r <- recvWith giveUp
         either (\_ -> return ()) tickleIfLarge r
@@ -124,46 +143,51 @@ watchedIOBackend wd Settings{..} IOBackend{..} =
 
 -- | The 'TVar's are the ones given to 'mkBackend': what a send and a
 --   receive of the backend give up on.
-tlsIOBackend :: TVar (STM ()) -> TVar (STM ()) -> Context -> Socket -> IO IOBackend
+tlsIOBackend
+    :: TVar (STM ()) -> TVar (STM ()) -> Context -> Socket -> IO IOBackend
 tlsIOBackend giveUpVar recvGiveUpVar ctx sock = do
     mysa <- getSocketName sock
     peersa <- getPeerName sock
     return $
         IOBackend
             { send = sendTLS ctx
-            , sendWith = \giveUp bs -> do
-                atomically $ writeTVar giveUpVar giveUp
-                (Right () <$ sendTLS ctx bs) `E.catch` gaveUp
+            , sendWith = \bs -> givingUpWith giveUpVar $ sendTLS ctx bs
             , sendMany = sendManyTLS ctx
-            , sendManyWith = \giveUp bss -> do
-                atomically $ writeTVar giveUpVar giveUp
-                (Right () <$ sendManyTLS ctx bss) `E.catch` gaveUp
+            , sendManyWith = \bss -> givingUpWith giveUpVar $ sendManyTLS ctx bss
             , recv = recvTLS ctx
-            , recvWith = \giveUp -> do
-                atomically $ writeTVar recvGiveUpVar giveUp
-                ((Right <$> recvTLS ctx) `E.catch` gaveUp)
-                    `E.finally` atomically (writeTVar recvGiveUpVar retry)
+            , recvWith = givingUpWith recvGiveUpVar $ recvTLS ctx
             , requestSock = sock
             , mySockAddr = mysa
             , peerSockAddr = peersa
             }
 
+-- | Running a TLS action whose backend gives up on what the 'TVar'
+--   holds, which is the 'STM' action for the while.
+givingUpWith :: TVar (STM ()) -> IO a -> STM g -> IO (Either g a)
+givingUpWith var io giveUp = do
+    atomically $ writeTVar var $ void giveUp
+    ((Right <$> io) `E.catch` gaveUp giveUp)
+        `E.finally` atomically (writeTVar var retry)
+
 -- | Everything here also gives up once the watchdog has given up on the
 --   connection, rather than waiting for the peer for ever.
 tcpIOBackend :: Settings -> TLSWatchdog -> Socket -> IO IOBackend
-tcpIOBackend settings wd sock = do
-    recvWith' <- mkRecvTCPWith settings sock
+tcpIOBackend Settings{..} wd sock = do
+    pool <- newBufferPool settingsReadBufferLowerLimit settingsReadBufferSize
     mysa <- getSocketName sock
     peersa <- getPeerName sock
     let expired = timedOutSTM wd
+        recvWith' :: STM g -> IO (Either g ByteString)
+        recvWith' = receiveWith sock pool
     return $
         IOBackend
-            { send = \bs -> sendTCPWith sock expired bs >>= orTimeout
-            , sendWith = \giveUp -> sendTCPWith sock (giveUp `orElse` expired)
+            { send = \bs -> sendTCPWith sock bs expired >>= orTimeout
+            , sendWith = \bs giveUp -> orExpired (sendTCPWith sock bs) giveUp expired
             , sendMany = \_ -> return ()
-            , sendManyWith = \giveUp -> sendTCPWith sock (giveUp `orElse` expired) . BS.concat
+            , sendManyWith = \bss giveUp ->
+                orExpired (sendTCPWith sock $ BS.concat bss) giveUp expired
             , recv = recvWith' expired >>= orTimeout
-            , recvWith = \giveUp -> recvWith' (giveUp `orElse` expired)
+            , recvWith = \giveUp -> orExpired recvWith' giveUp expired
             , requestSock = sock
             , mySockAddr = mysa
             , peerSockAddr = peersa
@@ -202,13 +226,18 @@ recvTLS ctx = E.handle onEOF $ recvData ctx
 --   which is how the TLS handshake is timed out, or the last 'STM' action
 --   has succeeded.
 mkBackend
-    :: Settings -> TLSWatchdog -> TVar (STM ()) -> TVar (STM ()) -> STM () -> Socket -> IO Backend
+    :: Settings
+    -> TLSWatchdog
+    -> TVar (STM ())
+    -> TVar (STM ())
+    -> STM ()
+    -> Socket
+    -> IO Backend
 mkBackend settings wd giveUpVar recvGiveUpVar giveUpAll sock = do
     let expired = timedOutSTM wd `orElse` giveUpAll
         send' bs = do
             giveUp <- readTVarIO giveUpVar
-            sendTCPWith sock (giveUp `orElse` expired) bs
-                >>= either (\_ -> E.throwIO ConnectionIsTimeout) return
+            sendTCPWith sock bs (giveUp `orElse` expired) >>= orTimeout
     recvWith' <- mkRecvTCPWith settings sock
     let recv' = do
             giveUp <- readTVarIO recvGiveUpVar
@@ -223,11 +252,18 @@ mkBackend settings wd giveUpVar recvGiveUpVar giveUpAll sock = do
             , backendRecv = recvN
             }
 
--- | close_notify, as a last word: a send which the http2 library has
---   given up on is not an error here.
+-- | close_notify, as a last word: a send which has been given up on is
+--   not an error here.
 byeGivingUp :: Context -> IO ()
-byeGivingUp ctx = bye ctx `E.catch` \e -> () <$ gaveUp e
+byeGivingUp ctx =
+    bye ctx `E.catch` \e -> case e of
+        ConnectionIsTimeout -> return ()
+        _ -> E.throwIO e
 
-gaveUp :: HTTP2Error -> IO (Either () a)
-gaveUp ConnectionIsTimeout = return $ Left ()
-gaveUp e = E.throwIO e
+-- | What a backend gave up with: the 'STM' action's, if it is what gave
+--   up, rather than the connection's.
+gaveUp :: STM g -> HTTP2Error -> IO (Either g a)
+gaveUp giveUp ConnectionIsTimeout = do
+    mg <- atomically $ (Just <$> giveUp) `orElse` return Nothing
+    maybe (E.throwIO ConnectionIsTimeout) (return . Left) mg
+gaveUp _ e = E.throwIO e

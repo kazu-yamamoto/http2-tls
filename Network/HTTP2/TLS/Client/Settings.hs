@@ -1,6 +1,8 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Network.HTTP2.TLS.Client.Settings where
 
-import Control.Concurrent.STM (STM, retry)
+import Control.Concurrent.STM (STM)
 import Data.X509.CertificateStore (CertificateStore)
 import Data.X509.Validation (validateDefault)
 import Network.Socket
@@ -10,7 +12,7 @@ import Network.HTTP2.Client (
     cacheLimit,
     defaultClientConfig,
  )
-import Network.Run.TCP (openClientSocket)
+import Network.Run.TCP (openClientSocketWith)
 import Network.TLS (
     Information,
     OnServerCertificate,
@@ -99,10 +101,13 @@ data Settings = Settings
     --
     -- >>> settingsUseEarlyData defaultSettings
     -- False
-    , settingsOpenClientSocket :: AddrInfo -> IO Socket
-    -- ^ Function to initialize the server socket (All)
+    , settingsOpenClientSocket
+        :: forall g. AddrInfo -> STM g -> IO (Either g Socket)
+    -- ^ Function to connect a socket to the server, giving up once the
+    --   'STM' action succeeds (All).  To set socket options, use
+    --   'openClientSocketWith' with them.
     --
-    -- Default: 'openClientSocket'
+    -- Default: 'openClientSocketWith' []
     , settingsOnServerFinished :: Information -> IO ()
     , settingsPingRateLimit :: Int
     -- ^ Maximum number of pings allowed per second (CVE-2019-9512)
@@ -132,16 +137,6 @@ data Settings = Settings
     --
     -- >>> settingsTimeout defaultSettings
     -- 0
-    , settingsGiveUp :: STM ()
-    -- ^ Once this succeeds, the connection is given up: the TLS handshake
-    --   and what is sent and received after it (All).  To give up
-    --   connecting too, open the socket with
-    --   'Network.Run.TCP.openClientSocketGivingUp' in
-    --   'settingsOpenClientSocket'.
-    --
-    -- Default: 'retry'
-    --
-    -- @since 0.6.0
     }
 
 -- | Default settings.
@@ -163,12 +158,11 @@ defaultSettings =
         , settingsWantSessionResume = Nothing
         , settingsWantSessionResumeList = []
         , settingsUseEarlyData = False
-        , settingsOpenClientSocket = openClientSocket
+        , settingsOpenClientSocket = openClientSocketWith []
         , settingsOnServerFinished = \_ -> return ()
         , settingsPingRateLimit = 10
         , settingsEmptyFrameRateLimit = 4
         , settingsSettingsRateLimit = 4
         , settingsRstRateLimit = 4
         , settingsTimeout = 0
-        , settingsGiveUp = retry
         }

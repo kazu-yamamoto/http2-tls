@@ -19,7 +19,7 @@ import Network.HTTP2.TLS.Server.Settings
 allocConfigForServer
     :: Settings
     -> (ByteString -> IO ())
-    -> (STM () -> ByteString -> IO (Either () ()))
+    -> (ByteString -> STM () -> IO (Either () ()))
     -> IO ByteString
     -> (STM () -> IO (Either () ByteString))
     -> SockAddr
@@ -33,7 +33,7 @@ allocConfigForServer Settings{..} send sendWith recv recvWith mysa peersa = do
                 { C.confWriteBuffer = buf
                 , C.confBufferSize = settingsSendBufferSize
                 , C.confSendAll = send
-                , C.confSendAllWith = Just sendWith
+                , C.confSendAllWith = Just $ flip sendWith
                 , C.confReadN = recvN
                 , C.confReadNWith = Just recvNWith
                 , C.confPositionReadMaker = C.defaultPositionReadMaker
@@ -67,7 +67,7 @@ freeConfigForServer conf = free $ C.confWriteBuffer conf
 allocConfigForClient
     :: Int
     -> (ByteString -> IO ())
-    -> (STM () -> ByteString -> IO (Either () ()))
+    -> (ByteString -> STM () -> IO (Either () ()))
     -> IO ByteString
     -> (STM () -> IO (Either () ByteString))
     -> SockAddr
@@ -82,7 +82,7 @@ allocConfigForClient tout send sendWith recv recvWith mysa peersa = do
                 { C.confWriteBuffer = buf
                 , C.confBufferSize = wbufsiz
                 , C.confSendAll = send
-                , C.confSendAllWith = Just sendWith
+                , C.confSendAllWith = Just $ flip sendWith
                 , C.confReadN = recvN
                 , C.confReadNWith = Just recvNWith
                 , C.confPositionReadMaker = C.defaultPositionReadMaker
