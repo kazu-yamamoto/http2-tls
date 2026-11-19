@@ -42,7 +42,7 @@ library
         bytestring >=0.10,
         crypton-x509-store >=1.9.0 && <1.11,
         crypton-x509-system >=1.9.0 && <1.11,
-        crypton-x509-validation >=1.9 && <1.11,
+        crypton-x509-validation >=1.9 && <1.12,
         http2 >=5.4.13 && <5.5,
         network >=3.2.12,
         network-control >=0.2 && <0.3,
