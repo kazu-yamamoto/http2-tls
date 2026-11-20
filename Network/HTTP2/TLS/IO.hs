@@ -12,6 +12,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import Data.Either (isRight)
+import Data.IORef
 import Network.HTTP2.Client (HTTP2Error, pattern ConnectionIsTimeout)
 import Network.Socket
 import Network.Socket.BufferPool
@@ -232,25 +233,48 @@ mkBackend
     -> TVar (STM ())
     -> STM ()
     -> Socket
-    -> IO Backend
+    -> IO TLSBackend
 mkBackend settings wd giveUpVar recvGiveUpVar giveUpAll sock = do
     let expired = timedOutSTM wd `orElse` giveUpAll
         send' bs = do
             giveUp <- readTVarIO giveUpVar
             sendTCPWith sock bs (giveUp `orElse` expired) >>= orTimeout
     recvWith' <- mkRecvTCPWith settings sock
+    -- What the caller of 'backendRecvWith' gives up on, during its call.
+    stopRef <- newIORef Nothing
     let recv' = do
             giveUp <- readTVarIO recvGiveUpVar
-            recvWith' (giveUp `orElse` expired) >>= orTimeout
+            stop <- maybe retry id <$> readIORef stopRef
+            r <- recvWith' $ (True <$ stop) `orElse` (False <$ (giveUp `orElse` expired))
+            case r of
+                Right bs -> return bs
+                -- Given up on by the caller of 'RecvWith', which sees it.
+                Left True -> return ""
+                Left False -> E.throwIO ConnectionIsTimeout
     recvN <- makeRecvN "" recv'
-    return
-        Backend
-            { backendFlush = return ()
-            , backendClose =
-                gracefulClose sock 5000 `E.catchIOError` \_ -> return ()
-            , backendSend = send'
-            , backendRecv = recvN
-            }
+    let backendRecvWith = RecvWith $ \n stop -> do
+            given <- newTVarIO Nothing
+            writeIORef stopRef $ Just $ stop >>= writeTVar given . Just
+            bs <- recvN n `E.finally` writeIORef stopRef Nothing
+            maybe (Right bs) Left <$> readTVarIO given
+        backend =
+            Backend
+                { backendFlush = return ()
+                , backendClose =
+                    gracefulClose sock 5000 `E.catchIOError` \_ -> return ()
+                , backendSend = send'
+                , backendRecv = recvN
+                }
+    return $ TLSBackend backend backendRecvWith
+
+-- | A 'Backend' whose receive can also be given up on, so that 'bye'
+--   waits for the last handshake messages without being interrupted.
+data TLSBackend = TLSBackend Backend RecvWith
+
+instance HasBackend TLSBackend where
+    initializeBackend _ = return ()
+    getBackend (TLSBackend b _) = b
+    getBackendRecvWith (TLSBackend _ r) = Just r
 
 -- | close_notify, as a last word: a send which has been given up on is
 --   not an error here.
