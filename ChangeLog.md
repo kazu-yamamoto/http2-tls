@@ -1,5 +1,9 @@
 # Revision history for http2-tls
 
+## 0.5.10
+
+* Build with tls 2.6, whose early data sizes are `Word32`.
+
 
 ## 0.5.9
 
