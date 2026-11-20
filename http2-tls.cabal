@@ -78,6 +78,9 @@ executable h2-client
     else
         buildable: False
 
+    if os(windows)
+        ghc-options: -with-rtsopts=--io-manager=native
+
 executable h2-server
     main-is:            h2-server.hs
     hs-source-dirs:     util
@@ -99,3 +102,6 @@ executable h2-server
 
     else
         buildable: False
+
+    if os(windows)
+        ghc-options: -with-rtsopts=--io-manager=native
