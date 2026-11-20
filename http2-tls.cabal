@@ -78,7 +78,7 @@ executable h2-client
     else
         buildable: False
 
-    if os(windows)
+    if os(windows) && (impl(ghc >= 9.12.5 && < 9.14) || impl(ghc >= 9.14.2))
         ghc-options: -with-rtsopts=--io-manager=native
 
 executable h2-server
@@ -103,5 +103,5 @@ executable h2-server
     else
         buildable: False
 
-    if os(windows)
+    if os(windows) && (impl(ghc >= 9.12.5 && < 9.14) || impl(ghc >= 9.14.2))
         ghc-options: -with-rtsopts=--io-manager=native
