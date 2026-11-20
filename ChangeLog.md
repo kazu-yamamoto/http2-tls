@@ -3,6 +3,7 @@
 ## 0.5.10
 
 * Build with tls 2.6, whose early data sizes are `Word32`.
+* Allow crypton-x509-validation 1.11.
 
 
 ## 0.5.9
