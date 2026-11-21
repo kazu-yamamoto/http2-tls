@@ -56,9 +56,9 @@ module Network.HTTP2.TLS.Client (
     settingsRstRateLimit,
 ) where
 
-import Control.Concurrent.STM (STM, atomically, newTVarIO, orElse, retry)
+import Control.Concurrent.STM (STM, atomically, newTVarIO, orElse, readTVar, retry, writeTVar)
 import qualified Control.Exception as E
-import Control.Monad (void)
+import Control.Monad (join, void, when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS.C8
 import Data.Maybe (fromMaybe)
@@ -130,7 +130,7 @@ runTLSWithConfig
     -> (Context -> SockAddr -> SockAddr -> IO a)
     -> IO a
 runTLSWithConfig cliconf settings serverName port alpn action =
-    runTLSWithBackend cliconf settings serverName port alpn retry $ \ctx IOBackend{..} ->
+    runTLSWithBackend False cliconf settings serverName port alpn retry $ \ctx IOBackend{..} ->
         action ctx mySockAddr peerSockAddr
 
 -- | 'runTLSWithConfig', giving up once the 'STM' action succeeds:
@@ -151,13 +151,16 @@ runTLSGivingUp
     -> IO (Either g a)
 runTLSGivingUp cliconf settings serverName port alpn action giveUp =
     givingUp giveUp $ \giveUp' ->
-        runTLSWithBackend cliconf settings serverName port alpn giveUp' $ \ctx IOBackend{..} ->
+        runTLSWithBackend False cliconf settings serverName port alpn giveUp' $ \ctx IOBackend{..} ->
             action ctx mySockAddr peerSockAddr
 
 -- | 'runTLSWithConfig' handing over an 'IOBackend' too, whose send and
---   receive can be given up on, as the server's.
+--   receive can be given up on, as the server's.  With 'True', the 'STM'
+--   action covers connecting and the handshake only: http2 gives up on the
+--   rest by itself, with a GOAWAY that a backend given up on cannot send.
 runTLSWithBackend
-    :: ClientConfig
+    :: Bool
+    -> ClientConfig
     -> Settings
     -> HostName
     -> PortNumber
@@ -165,7 +168,7 @@ runTLSWithBackend
     -> STM ()
     -> (Context -> IOBackend -> IO a)
     -> IO a
-runTLSWithBackend cliconf settings@Settings{..} serverName port alpn giveUp action =
+runTLSWithBackend h2 cliconf settings@Settings{..} serverName port alpn giveUp action =
     runTCPClientWithSettings (tcpSettings settings giveUp) serverName (show port) $ \sock -> do
         params <- getClientParams settings sni port alpn
         giveUpVar <- newTVarIO retry
@@ -174,10 +177,12 @@ runTLSWithBackend cliconf settings@Settings{..} serverName port alpn giveUp acti
         -- the whole of its life, and http2 ends it when its own watchdog
         -- says so.
         wd <- newTLSWatchdog 0
+        giveUpAllVar <- newTVarIO giveUp
         backend <-
-            mkBackend Server.defaultSettings wd giveUpVar recvGiveUpVar giveUp sock
+            mkBackend Server.defaultSettings wd giveUpVar recvGiveUpVar (join $ readTVar giveUpAllVar) sock
         ctx <- contextNew backend params
         handshake ctx
+        when h2 $ atomically $ writeTVar giveUpAllVar retry
         iobackend <- tlsIOBackend giveUpVar recvGiveUpVar ctx sock
         r <- action ctx iobackend
         byeGivingUp ctx
@@ -189,7 +194,7 @@ runTLSWithBackend cliconf settings@Settings{..} serverName port alpn giveUp acti
 runWithConfig
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> IO a
 runWithConfig cliconf settings serverName port client =
-    runTLSWithBackend cliconf settings serverName port "h2" retry $ \_ iobackend ->
+    runTLSWithBackend True cliconf settings serverName port "h2" retry $ \_ iobackend ->
         run' cliconf' settings iobackend client retry
   where
     cliconf' :: ClientConfig
@@ -211,7 +216,7 @@ runGivingUp
     -> IO (Either g a)
 runGivingUp cliconf settings serverName port client giveUp =
     givingUp giveUp $ \giveUp' ->
-        runTLSWithBackend cliconf settings serverName port "h2" giveUp' $ \_ iobackend ->
+        runTLSWithBackend True cliconf settings serverName port "h2" giveUp' $ \_ iobackend ->
             run' cliconf' settings iobackend client giveUp'
   where
     cliconf' :: ClientConfig
@@ -287,10 +292,13 @@ givingUp giveUp action = do
     r <- E.try $ action $ void giveUp
     case r of
         Right x -> return $ Right x
-        -- Whatever the action ended with, it was given up on.
-        Left (e :: E.SomeException) -> do
-            mg <- atomically $ (Just <$> giveUp) `orElse` return Nothing
-            maybe (E.throwIO e) (return . Left) mg
+        -- Whatever the action ended with, it was given up on.  Not the
+        -- caller being killed, though: that goes on.
+        Left (e :: E.SomeException)
+            | Just (_ :: E.SomeAsyncException) <- E.fromException e -> E.throwIO e
+            | otherwise -> do
+                mg <- atomically $ (Just <$> giveUp) `orElse` return Nothing
+                maybe (E.throwIO e) (return . Left) mg
 
 defaultClientConfig
     :: Settings
