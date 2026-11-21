@@ -56,6 +56,7 @@ module Network.HTTP2.TLS.Client (
     settingsRstRateLimit,
 ) where
 
+import Control.Concurrent (myThreadId)
 import Control.Concurrent.STM (STM, atomically, newTVarIO, orElse, readTVar, retry, writeTVar)
 import qualified Control.Exception as E
 import Control.Monad (join, void, when)
@@ -76,7 +77,7 @@ import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
 import qualified Network.HTTP2.TLS.Server.Settings as Server
 import Network.HTTP2.TLS.Supported
-import Network.HTTP2.TLS.Watchdog (newTLSWatchdog)
+import Network.HTTP2.TLS.Watchdog (TLSWatchdog, handOver, newTLSWatchdog, timedOutSTM, withWatchdog)
 
 ----------------------------------------------------------------
 -- Default API
@@ -168,20 +169,22 @@ runTLSWithBackend
     -> STM ()
     -> (Context -> IOBackend -> IO a)
     -> IO a
-runTLSWithBackend h2 cliconf settings@Settings{..} serverName port alpn giveUp action =
-    runTCPClientWithSettings (tcpSettings settings giveUp) serverName (show port) $ \sock -> do
+runTLSWithBackend h2 cliconf settings@Settings{..} serverName port alpn giveUp action = do
+    -- 'settingsTimeout' covers connecting and the handshake too, which
+    -- could wait for ever on a silent server.  http2 times out the rest.
+    wd <- newTLSWatchdog $ settingsTimeout * 1000000
+    tid <- myThreadId
+    withWatchdog wd (E.throwTo tid H2Client.ConnectionIsTimeout) $
+      runTCPClientWithSettings (tcpSettings settings giveUp wd) serverName (show port) $ \sock -> do
         params <- getClientParams settings sni port alpn
         giveUpVar <- newTVarIO retry
         recvGiveUpVar <- newTVarIO retry
-        -- Nothing here gives up by itself: the connection is http2's for
-        -- the whole of its life, and http2 ends it when its own watchdog
-        -- says so.
-        wd <- newTLSWatchdog 0
         giveUpAllVar <- newTVarIO giveUp
         backend <-
             mkBackend Server.defaultSettings wd giveUpVar recvGiveUpVar (join $ readTVar giveUpAllVar) sock
         ctx <- contextNew backend params
-        handshake ctx
+        handshakeWithin wd ctx
+        handOver wd
         when h2 $ atomically $ writeTVar giveUpAllVar retry
         iobackend <- tlsIOBackend giveUpVar recvGiveUpVar ctx sock
         r <- action ctx iobackend
@@ -244,9 +247,12 @@ runH2CGivingUp cliconf settings serverName port client giveUp =
 
 runH2C'
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> STM () -> IO a
-runH2C' cliconf settings serverName port client giveUp =
-    runTCPClientWithSettings (tcpSettings settings giveUp) serverName (show port) $ \sock -> do
-        wd <- newTLSWatchdog 0
+runH2C' cliconf settings@Settings{..} serverName port client giveUp = do
+    wd <- newTLSWatchdog $ settingsTimeout * 1000000
+    tid <- myThreadId
+    withWatchdog wd (E.throwTo tid H2Client.ConnectionIsTimeout) $
+      runTCPClientWithSettings (tcpSettings settings giveUp wd) serverName (show port) $ \sock -> do
+        handOver wd
         iobackend <- tcpIOBackend Server.defaultSettings wd sock
         run' cliconf' settings iobackend client giveUp
   where
@@ -271,13 +277,20 @@ run' cliconf Settings{..} IOBackend{..} client giveUp =
                 >>= either (\_ -> E.throwIO GivenUp) return
         )
 
-tcpSettings :: Settings -> STM () -> TCP.Settings
-tcpSettings Settings{..} giveUp =
+tcpSettings :: Settings -> STM () -> TLSWatchdog -> TCP.Settings
+tcpSettings Settings{..} giveUp wd =
     TCP.defaultSettings
         { TCP.settingsOpenClientSocket = \ai ->
-            settingsOpenClientSocket ai giveUp
-                >>= either (\_ -> E.throwIO GivenUp) return
+            settingsOpenClientSocket ai ((Left <$> giveUp) `orElse` (Right <$> timedOutSTM wd))
+                >>= either (either (\_ -> E.throwIO GivenUp) (\_ -> E.throwIO H2Client.ConnectionIsTimeout)) return
         }
+
+-- | The handshake, telling a timeout as 'H2Client.ConnectionIsTimeout'
+--   rather than as the 'HandshakeFailed' tls wraps it in.
+handshakeWithin :: TLSWatchdog -> Context -> IO ()
+handshakeWithin wd ctx = handshake ctx `E.catch` \e -> do
+    late <- atomically $ (True <$ timedOutSTM wd) `orElse` return False
+    if late then E.throwIO H2Client.ConnectionIsTimeout else E.throwIO (e :: TLSException)
 
 -- | Thrown inside once given up on, and turned into 'Left' outside.
 data GivenUp = GivenUp deriving (Show)
