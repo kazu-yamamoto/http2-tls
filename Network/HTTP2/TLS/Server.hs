@@ -59,6 +59,7 @@ module Network.HTTP2.TLS.Server (
 import Control.Concurrent (myThreadId)
 import Control.Concurrent.STM (STM, atomically, check, newTVarIO, readTVar, retry, writeTVar)
 import qualified Control.Exception as E
+import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Network.HTTP2.Client (pattern ConnectionIsTimeout)
 import Network.HTTP2.Server (
@@ -106,7 +107,20 @@ runTLS
     -- ^ ALPN
     -> (IOBackend -> IO ())
     -> IO ()
-runTLS settings creds host port alpn action =
+runTLS = runTLS' False
+
+-- | 'runTLS', handing the connection over to http2 after the handshake
+--   if told so.  Otherwise the watchdog goes on supervising the action.
+runTLS'
+    :: Bool
+    -> Settings
+    -> Credentials
+    -> HostName
+    -> PortNumber
+    -> ByteString
+    -> (IOBackend -> IO ())
+    -> IO ()
+runTLS' h2 settings creds host port alpn action =
     runTCPServerWithSettings
         (tcpSettings settings)
         (Just host)
@@ -118,9 +132,9 @@ runTLS settings creds host port alpn action =
             ctx <- contextNew backend params
             handshake ctx
             iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
-            -- The connection is the action's from here: the http2 library
-            -- supervises it with a watchdog of its own.
-            handOver wd
+            -- The http2 library supervises the connection from here with a
+            -- watchdog of its own.
+            when h2 $ handOver wd
             action iobackend
             byeGivingUp ctx
   where
@@ -137,7 +151,18 @@ runTLSWithSocket
     -- ^ ALPN
     -> (IOBackend -> IO ())
     -> IO ()
-runTLSWithSocket settings creds s alpn action =
+runTLSWithSocket = runTLSWithSocket' False
+
+-- | 'runTLSWithSocket', handing over as 'runTLS'' does.
+runTLSWithSocket'
+    :: Bool
+    -> Settings
+    -> Credentials
+    -> Socket
+    -> ByteString
+    -> (IOBackend -> IO ())
+    -> IO ()
+runTLSWithSocket' h2 settings creds s alpn action =
     runTCPServerWithSocketAndSettings
         (tcpSettings settings)
         s
@@ -148,9 +173,9 @@ runTLSWithSocket settings creds s alpn action =
             ctx <- contextNew backend params
             handshake ctx
             iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
-            -- The connection is the action's from here: the http2 library
-            -- supervises it with a watchdog of its own.
-            handOver wd
+            -- The http2 library supervises the connection from here with a
+            -- watchdog of its own.
+            when h2 $ handOver wd
             r <- action iobackend
             byeGivingUp ctx
             return r
@@ -162,14 +187,14 @@ runTLSWithSocket settings creds s alpn action =
 run :: Settings -> Credentials -> HostName -> PortNumber -> Server -> IO ()
 run settings0 creds host port server = do
     (settings, goAway) <- goingAway settings0
-    runTLS (byHTTP2 settings) creds host port "h2" $ run' settings goAway server
+    runTLS' True (byHTTP2 settings) creds host port "h2" $ run' settings goAway server
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
 --   ALPN is "h2".
 runWithSocket :: Settings -> Credentials -> Socket -> Server -> IO ()
 runWithSocket settings0 creds s server = do
     (settings, goAway) <- goingAway settings0
-    runTLSWithSocket (byHTTP2 settings) creds s "h2" $ run' settings goAway server
+    runTLSWithSocket' True (byHTTP2 settings) creds s "h2" $ run' settings goAway server
 
 -- | Running an HTTP\/2 client over TCP.
 runH2C :: Settings -> HostName -> PortNumber -> Server -> IO ()
