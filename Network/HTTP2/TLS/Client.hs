@@ -292,10 +292,13 @@ givingUp giveUp action = do
     r <- E.try $ action $ void giveUp
     case r of
         Right x -> return $ Right x
-        -- Whatever the action ended with, it was given up on.
-        Left (e :: E.SomeException) -> do
-            mg <- atomically $ (Just <$> giveUp) `orElse` return Nothing
-            maybe (E.throwIO e) (return . Left) mg
+        -- Whatever the action ended with, it was given up on.  Not the
+        -- caller being killed, though: that goes on.
+        Left (e :: E.SomeException)
+            | Just (_ :: E.SomeAsyncException) <- E.fromException e -> E.throwIO e
+            | otherwise -> do
+                mg <- atomically $ (Just <$> giveUp) `orElse` return Nothing
+                maybe (E.throwIO e) (return . Left) mg
 
 defaultClientConfig
     :: Settings
