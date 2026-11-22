@@ -136,7 +136,7 @@ runTLS' h2 settings creds host port alpn action =
             -- watchdog of its own.
             when h2 $ handOver wd
             action iobackend
-            byeGivingUp ctx
+            byeGivingUp giveUpVar ctx
   where
     params = getServerParams settings creds alpn
 
@@ -177,7 +177,7 @@ runTLSWithSocket' h2 settings creds s alpn action =
             -- watchdog of its own.
             when h2 $ handOver wd
             r <- action iobackend
-            byeGivingUp ctx
+            byeGivingUp giveUpVar ctx
             return r
   where
     params = getServerParams settings creds alpn
@@ -252,7 +252,7 @@ runIO
     -> IO ()
 runIO settings0 creds s action = do
     (settings, goAway) <- goingAway settings0
-    runTLSWithSocket (byHTTP2 settings) creds s "h2" $ \iobackend ->
+    runTLSWithSocket' True (byHTTP2 settings) creds s "h2" $ \iobackend ->
         runIO' settings goAway action iobackend
 
 runIO'

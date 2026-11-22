@@ -188,7 +188,7 @@ runTLSWithBackend h2 cliconf settings@Settings{..} serverName port alpn giveUp a
         when h2 $ atomically $ writeTVar giveUpAllVar retry
         iobackend <- tlsIOBackend giveUpVar recvGiveUpVar ctx sock
         r <- action ctx iobackend
-        byeGivingUp ctx
+        byeGivingUp giveUpVar ctx
         return r
   where
     sni = fromMaybe (H2Client.authority cliconf) $ settingsServerNameOverride
