@@ -277,12 +277,19 @@ instance HasBackend TLSBackend where
     getBackendRecvWith (TLSBackend _ r) = Just r
 
 -- | close_notify, as a last word: a send which has been given up on is
---   not an error here.
-byeGivingUp :: Context -> IO ()
-byeGivingUp ctx =
-    bye ctx `E.catch` \e -> case e of
-        ConnectionIsTimeout -> return ()
-        _ -> E.throwIO e
+--   not an error here.  Given up on after a second, through the send's
+--   'TVar': handed over to http2, nothing else bounded it.
+byeGivingUp :: TVar (STM ()) -> Context -> IO ()
+byeGivingUp giveUpVar ctx = do
+    late <- registerDelay 1000000
+    atomically $ writeTVar giveUpVar $ readTVar late >>= check
+    -- close_notify is best effort: a peer gone first is no failure.
+    bye ctx `E.catch` \e -> when (isAsync e) $ E.throwIO e
+  where
+    isAsync :: E.SomeException -> Bool
+    isAsync e = case E.fromException e of
+        Just (E.SomeAsyncException _) -> True
+        Nothing -> False
 
 -- | What a backend gave up with: the 'STM' action's, if it is what gave
 --   up, rather than the connection's.
