@@ -56,12 +56,10 @@ module Network.HTTP2.TLS.Server (
     ServerIO (..),
 ) where
 
-import Control.Concurrent (myThreadId)
 import Control.Concurrent.STM (STM, atomically, check, newTVarIO, readTVar, retry, writeTVar)
 import qualified Control.Exception as E
 import Control.Monad (when)
 import Data.ByteString (ByteString)
-import Network.HTTP2.Client (pattern ConnectionIsTimeout)
 import Network.HTTP2.Server (
     Server,
     connectionWindowSize,
@@ -304,8 +302,7 @@ runIOH2C settings0 s action = do
 supervising :: Settings -> (TLSWatchdog -> IO a) -> IO a
 supervising Settings{..} action = do
     wd <- newTLSWatchdog $ settingsTimeout * 1000000
-    tid <- myThreadId
-    withWatchdog wd (E.throwTo tid ConnectionIsTimeout) $ action wd
+    supervisedBy wd $ action wd
 
 tcpSettings :: Settings -> TCP.ServerSettings
 tcpSettings settings =

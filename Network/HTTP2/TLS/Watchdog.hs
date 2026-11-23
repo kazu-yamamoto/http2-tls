@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- | What this package records about a connection it is establishing, and
@@ -20,9 +21,13 @@ module Network.HTTP2.TLS.Watchdog (
     timedOutSTM,
     handOver,
     withWatchdog,
+    supervisedBy,
 ) where
 
+import Control.Concurrent (myThreadId)
 import Control.Concurrent.STM (STM, retry)
+import qualified Control.Exception as E
+import Network.HTTP2.Client (pattern ConnectionIsTimeout)
 import Control.Monad (when)
 import Data.Word (Word64)
 import System.Watchdog hiding (
@@ -85,6 +90,21 @@ handOver :: TLSWatchdog -> IO ()
 handOver (TLSWatchdog _ wd) = W.handOver wd
 
 -- | Supervising an action with the watchdog thread.
+-- | Running an action under the watchdog, whose last resort is thrown to
+--   this thread as an asynchronous exception of its own, so that nothing
+--   on the way takes it for an error, and comes out as 'ConnectionIsTimeout'.
+supervisedBy :: TLSWatchdog -> IO a -> IO a
+supervisedBy wd action = do
+    tid <- myThreadId
+    E.handle (\LastResort -> E.throwIO ConnectionIsTimeout) $
+        withWatchdog wd (E.throwTo tid LastResort) action
+
+data LastResort = LastResort deriving (Show)
+
+instance E.Exception LastResort where
+    toException = E.asyncExceptionToException
+    fromException = E.asyncExceptionFromException
+
 withWatchdog :: TLSWatchdog -> IO () -> IO a -> IO a
 withWatchdog (TLSWatchdog False _) _ action = action
 withWatchdog (TLSWatchdog True wd) lastResort action =
