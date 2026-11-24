@@ -1,6 +1,6 @@
 packages: .
 
--- http2, http-semantics, network-run (openClientSocketWith) and
+-- http2, http-semantics, network-run (openClientSocketWith, settingsClose) and
 -- time-manager 0.5.3 (System.Watchdog) are not released yet.
 source-repository-package
   type: git
@@ -15,7 +15,7 @@ source-repository-package
 source-repository-package
   type: git
   location: https://github.com/kazu-yamamoto/network-run.git
-  tag: 3eb30b5cb4a17430eb0ea16878a33208a7b54485
+  tag: ac412b516c80f4da68c9f04f2e82506d0691d04e
 
 source-repository-package
   type: git
