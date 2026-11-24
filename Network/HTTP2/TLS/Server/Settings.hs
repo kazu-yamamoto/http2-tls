@@ -1,6 +1,7 @@
 module Network.HTTP2.TLS.Server.Settings where
 
 import Network.Control
+import Network.Socket (Socket, unsafeClose)
 import Network.TLS (SessionManager, defaultKeyLogger, noSessionManager)
 
 -- Server settings type.
@@ -93,14 +94,15 @@ data Settings = Settings
     --   once the streams it has taken are done.  The default does nothing.
     --
     --   @since 0.5.7
-    , settingsUnsafeClose :: Bool
-    -- ^ Closing a connection with network's unsafe close, which skips the
-    --   IO manager.  Set this only when the action given to 'runTLS' or
-    --   'runTLSWithSocket' leaves no thread and no registered wait on the
-    --   socket by the time it returns.  The other entry points run http2,
-    --   which does not, and set it themselves.  The default is 'False'.
+    , settingsClose :: Socket -> IO ()
+    -- ^ Closing a connection served by 'runTLS' or 'runTLSWithSocket',
+    --   which do not know the protocol on top: a graceful close, say
+    --   @\\s -> 'unsafeGracefulClose' s 5000@, for one whose server may
+    --   close while the peer is still sending.  The entry points which run
+    --   HTTP\/2 close gracefully themselves.  The default, 'unsafeClose',
+    --   is for an action which leaves no thread waiting on the socket.
     --
-    --   @since 0.5.7
+    --   @since 0.6.0
     }
 
 {-# DEPRECATED settingsNumberOfWorkers "This field is meaningless now" #-}
@@ -126,5 +128,5 @@ defaultSettings =
         , settingsSettingsRateLimit = 4
         , settingsRstRateLimit = 4
         , settingsInstallShutdownHandler = const $ return ()
-        , settingsUnsafeClose = False
+        , settingsClose = unsafeClose
         }

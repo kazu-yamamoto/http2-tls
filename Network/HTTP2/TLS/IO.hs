@@ -19,7 +19,6 @@ import Network.Socket.BufferPool
 import qualified Network.Socket.ByteString as NSB
 import Network.TLS hiding (HostName)
 import System.IO.Error (isEOFError)
-import qualified System.IO.Error as E
 
 import Network.HTTP2.TLS.Server.Settings
 import Network.HTTP2.TLS.Watchdog
@@ -260,8 +259,9 @@ mkBackend settings wd giveUpVar recvGiveUpVar giveUpAll sock = do
         backend =
             Backend
                 { backendFlush = return ()
-                , backendClose =
-                    gracefulClose sock 5000 `E.catchIOError` \_ -> return ()
+                , -- The socket is network-run's to close, as the protocol
+                  -- on top says; tls calls this only from contextClose.
+                  backendClose = return ()
                 , backendSend = send'
                 , backendRecv = recvN
                 }

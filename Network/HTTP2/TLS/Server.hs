@@ -36,7 +36,7 @@ module Network.HTTP2.TLS.Server (
     settingsSettingsRateLimit,
     settingsRstRateLimit,
     settingsInstallShutdownHandler,
-    settingsUnsafeClose,
+    settingsClose,
 
     -- * IO backend
     IOBackend,
@@ -84,6 +84,7 @@ import Network.Socket (
     HostName,
     PortNumber,
     Socket,
+    unsafeGracefulClose,
  )
 import Network.TLS hiding (HostName)
 
@@ -308,12 +309,14 @@ tcpSettings :: Settings -> TCP.ServerSettings
 tcpSettings settings =
     TCP.defaultServerSettings
         { TCP.settingsInstallShutdownHandler = settingsInstallShutdownHandler settings
-        , TCP.settingsUnsafeClose = settingsUnsafeClose settings
+        , TCP.settingsClose = settingsClose settings
         }
 
--- | For the entry points which run http2, which waits for its threads.
+-- | For the entry points which run http2: closing gracefully, or the
+--   reset for a request sent after GOAWAY can wipe GOAWAY out.  Unsafe,
+--   since http2 waits for its threads.
 byHTTP2 :: Settings -> Settings
-byHTTP2 settings = settings{settingsUnsafeClose = True}
+byHTTP2 settings = settings{settingsClose = \s -> unsafeGracefulClose s 5000}
 
 -- | Stopping the server also tells each HTTP\/2 connection to go away:
 --   GOAWAY, and closing once the streams it has taken are done.
