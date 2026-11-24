@@ -56,7 +56,6 @@ module Network.HTTP2.TLS.Client (
     settingsRstRateLimit,
 ) where
 
-import Control.Concurrent (myThreadId)
 import Control.Concurrent.STM (STM, atomically, newTVarIO, orElse, readTVar, retry, writeTVar)
 import qualified Control.Exception as E
 import Control.Monad (join, void, when)
@@ -77,7 +76,7 @@ import Network.HTTP2.TLS.Config
 import Network.HTTP2.TLS.IO
 import qualified Network.HTTP2.TLS.Server.Settings as Server
 import Network.HTTP2.TLS.Supported
-import Network.HTTP2.TLS.Watchdog (TLSWatchdog, handOver, newTLSWatchdog, timedOutSTM, withWatchdog)
+import Network.HTTP2.TLS.Watchdog (TLSWatchdog, handOver, newTLSWatchdog, supervisedBy, timedOutSTM)
 
 ----------------------------------------------------------------
 -- Default API
@@ -173,8 +172,7 @@ runTLSWithBackend h2 cliconf settings@Settings{..} serverName port alpn giveUp a
     -- 'settingsTimeout' covers connecting and the handshake too, which
     -- could wait for ever on a silent server.  http2 times out the rest.
     wd <- newTLSWatchdog $ settingsTimeout * 1000000
-    tid <- myThreadId
-    withWatchdog wd (E.throwTo tid H2Client.ConnectionIsTimeout) $
+    supervisedBy wd $
       runTCPClientWithSettings (tcpSettings settings giveUp wd) serverName (show port) $ \sock -> do
         params <- getClientParams settings sni port alpn
         giveUpVar <- newTVarIO retry
@@ -249,8 +247,7 @@ runH2C'
     :: ClientConfig -> Settings -> HostName -> PortNumber -> Client a -> STM () -> IO a
 runH2C' cliconf settings@Settings{..} serverName port client giveUp = do
     wd <- newTLSWatchdog $ settingsTimeout * 1000000
-    tid <- myThreadId
-    withWatchdog wd (E.throwTo tid H2Client.ConnectionIsTimeout) $
+    supervisedBy wd $
       runTCPClientWithSettings (tcpSettings settings giveUp wd) serverName (show port) $ \sock -> do
         handOver wd
         iobackend <- tcpIOBackend Server.defaultSettings wd sock
