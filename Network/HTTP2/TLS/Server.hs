@@ -127,20 +127,21 @@ runTLS' h2 settings0 creds host port alpn action = do
         (Just host)
         (show port)
         $ \sock -> supervising settings $ \wd -> do
-            giveUpVar <- newTVarIO retry
-            recvGiveUpVar <- newTVarIO retry
-            (stopHandshake, handshaken) <- handshakeStop stopping
-            backend <- mkBackend settings wd giveUpVar recvGiveUpVar stopHandshake sock
+            backend <- mkBackend settings wd retry sock
             ctx <- contextNew backend params
-            -- No HTTP/2 yet to close gracefully for: closed at once.
-            handshake ctx `E.onException` close sock
-            handshaken
-            iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
-            -- The http2 library supervises the connection from here with a
-            -- watchdog of its own.
-            when h2 $ handOver wd
-            action iobackend
-            byeGivingUp giveUpVar ctx
+            -- Given up on once the server is told to stop, and nothing
+            -- after it: what the connection does next is its protocol's to
+            -- end.  No HTTP/2 yet to close gracefully for: closed at once.
+            handshaken <- handshakeWith ctx stopping `E.onException` close sock
+            case handshaken of
+                Left () -> close sock
+                Right () -> do
+                    iobackend <- watchedIOBackend wd settings <$> tlsIOBackend ctx sock
+                    -- The http2 library supervises the connection from here
+                    -- with a watchdog of its own.
+                    when h2 $ handOver wd
+                    action iobackend
+                    byeGivingUp ctx
   where
     params = getServerParams settings0 creds alpn
 
@@ -172,21 +173,21 @@ runTLSWithSocket' h2 settings0 creds s alpn action = do
         (tcpSettings settings)
         s
         $ \sock -> supervising settings $ \wd -> do
-            giveUpVar <- newTVarIO retry
-            recvGiveUpVar <- newTVarIO retry
-            (stopHandshake, handshaken) <- handshakeStop stopping
-            backend <- mkBackend settings wd giveUpVar recvGiveUpVar stopHandshake sock
+            backend <- mkBackend settings wd retry sock
             ctx <- contextNew backend params
-            -- No HTTP/2 yet to close gracefully for: closed at once.
-            handshake ctx `E.onException` close sock
-            handshaken
-            iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
-            -- The http2 library supervises the connection from here with a
-            -- watchdog of its own.
-            when h2 $ handOver wd
-            r <- action iobackend
-            byeGivingUp giveUpVar ctx
-            return r
+            -- Given up on once the server is told to stop, and nothing
+            -- after it: what the connection does next is its protocol's to
+            -- end.  No HTTP/2 yet to close gracefully for: closed at once.
+            handshaken <- handshakeWith ctx stopping `E.onException` close sock
+            case handshaken of
+                Left () -> close sock
+                Right () -> do
+                    iobackend <- watchedIOBackend wd settings <$> tlsIOBackend ctx sock
+                    -- The http2 library supervises the connection from here
+                    -- with a watchdog of its own.
+                    when h2 $ handOver wd
+                    action iobackend
+                    byeGivingUp ctx
   where
     params = getServerParams settings0 creds alpn
 
@@ -326,16 +327,6 @@ tcpSettings settings =
 --   since http2 waits for its threads.
 byHTTP2 :: Settings -> Settings
 byHTTP2 settings = settings{settingsClose = \s -> unsafeGracefulClose s 5000}
-
--- | Giving up a handshake once the server is told to stop, and nothing
---   after it: what the connection does next is its protocol's to end.
-handshakeStop :: STM () -> IO (STM (), IO ())
-handshakeStop stopping = do
-    handshaking <- newTVarIO True
-    return
-        ( (readTVar handshaking >>= check) >> stopping
-        , atomically $ writeTVar handshaking False
-        )
 
 -- | Stopping the server also tells each HTTP\/2 connection to go away:
 --   GOAWAY, and closing once the streams it has taken are done.
