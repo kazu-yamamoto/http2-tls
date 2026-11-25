@@ -7,13 +7,13 @@ module Network.HTTP2.TLS.IO where
 
 import Control.Concurrent.STM
 import qualified Control.Exception as E
-import Control.Monad (void, when)
+import Control.Monad (when)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import Data.Either (isRight)
 import Data.IORef
-import Network.HTTP2.Client (HTTP2Error, pattern ConnectionIsTimeout)
+import Network.HTTP2.Client (pattern ConnectionIsTimeout)
 import Network.Socket
 import Network.Socket.BufferPool
 import qualified Network.Socket.ByteString as NSB
@@ -141,33 +141,23 @@ watchedIOBackend wd Settings{..} IOBackend{..} =
         return r
     tickleIfLarge bs = when (BS.length bs > settingsSlowlorisSize) $ progress wd
 
--- | The 'TVar's are the ones given to 'mkBackend': what a send and a
---   receive of the backend give up on.
-tlsIOBackend
-    :: TVar (STM ()) -> TVar (STM ()) -> Context -> Socket -> IO IOBackend
-tlsIOBackend giveUpVar recvGiveUpVar ctx sock = do
+-- | Sending and receiving through TLS, giving up as the 'STM' action says.
+tlsIOBackend :: Context -> Socket -> IO IOBackend
+tlsIOBackend ctx sock = do
     mysa <- getSocketName sock
     peersa <- getPeerName sock
     return $
         IOBackend
             { send = sendTLS ctx
-            , sendWith = \bs -> givingUpWith giveUpVar $ sendTLS ctx bs
+            , sendWith = \bs -> afterCloseNotifyWith . sendDataWith ctx (LBS.fromStrict bs)
             , sendMany = sendManyTLS ctx
-            , sendManyWith = \bss -> givingUpWith giveUpVar $ sendManyTLS ctx bss
+            , sendManyWith = \bss -> afterCloseNotifyWith . sendDataWith ctx (LBS.fromChunks bss)
             , recv = recvTLS ctx
-            , recvWith = givingUpWith recvGiveUpVar $ recvTLS ctx
+            , recvWith = recvTLSWith ctx
             , requestSock = sock
             , mySockAddr = mysa
             , peerSockAddr = peersa
             }
-
--- | Running a TLS action whose backend gives up on what the 'TVar'
---   holds, which is the 'STM' action for the while.
-givingUpWith :: TVar (STM ()) -> IO a -> STM g -> IO (Either g a)
-givingUpWith var io giveUp = do
-    atomically $ writeTVar var $ void giveUp
-    ((Right <$> io) `E.catch` gaveUp giveUp)
-        `E.finally` atomically (writeTVar var retry)
 
 -- | Everything here also gives up once the watchdog has given up on the
 --   connection, rather than waiting for the peer for ever.
@@ -208,54 +198,57 @@ afterCloseNotify = E.handle $ \e -> case e of
     PostHandshake Error_EOF -> return ()
     _ -> E.throwIO e
 
+afterCloseNotifyWith :: IO (Either g ()) -> IO (Either g ())
+afterCloseNotifyWith = E.handle $ \e -> case e of
+    PostHandshake Error_EOF -> return $ Right ()
+    _ -> E.throwIO e
+
 -- TLS version of recv (decrypting) without a cache.
 recvTLS :: Context -> IO ByteString
-recvTLS ctx = E.handle onEOF $ recvData ctx
-  where
-    onEOF e
-        | Just (PostHandshake Error_EOF) <- E.fromException e = return ""
-        | Just ioe <- E.fromException e, isEOFError ioe = return ""
-        | otherwise = E.throwIO e
+recvTLS ctx = E.handle (onEOF return) $ recvData ctx
+
+-- | 'recvTLS' which gives up between TLS records once the 'STM' action
+--   succeeds.
+recvTLSWith :: Context -> STM g -> IO (Either g ByteString)
+recvTLSWith ctx giveUp = E.handle (onEOF (return . Right)) $ recvDataWith ctx giveUp
+
+onEOF :: (ByteString -> IO a) -> E.SomeException -> IO a
+onEOF eof e
+    | Just (PostHandshake Error_EOF) <- E.fromException e = eof ""
+    | Just ioe <- E.fromException e, isEOFError ioe = eof ""
+    | otherwise = E.throwIO e
 
 ----------------------------------------------------------------
 
--- | A send of the backend gives up on what the first 'TVar' holds, which
---   the http2 library sets once it sends through 'sendWith', and a
---   receive on what the second holds, which 'recvWith' sets.
---   Both also give up once the watchdog has given up on the connection,
---   which is how the TLS handshake is timed out, or the last 'STM' action
---   has succeeded.
-mkBackend
-    :: Settings
-    -> TLSWatchdog
-    -> TVar (STM ())
-    -> TVar (STM ())
-    -> STM ()
-    -> Socket
-    -> IO TLSBackend
-mkBackend settings wd giveUpVar recvGiveUpVar giveUpAll sock = do
+-- | Everything gives up once the watchdog has given up on the connection,
+--   which is how the TLS handshake is timed out, or the 'STM' action has
+--   succeeded.  'RecvWith' and 'SendWith' also give up on what tls says.
+mkBackend :: Settings -> TLSWatchdog -> STM () -> Socket -> IO TLSBackend
+mkBackend settings wd giveUpAll sock = do
     let expired = timedOutSTM wd `orElse` giveUpAll
-        send' bs = do
-            giveUp <- readTVarIO giveUpVar
-            sendTCPWith sock bs (giveUp `orElse` expired) >>= orTimeout
+        send' bs = sendTCPWith sock bs expired >>= orTimeout
+        sendWith' = SendWith $ \bs stop -> orExpired (sendTCPWith sock bs) stop expired
     recvWith' <- mkRecvTCPWith settings sock
-    -- What the caller of 'backendRecvWith' gives up on, during its call.
+    -- What the caller of 'RecvWith' gives up on, during its call.
     stopRef <- newIORef Nothing
     let recv' = do
-            giveUp <- readTVarIO recvGiveUpVar
             stop <- maybe retry id <$> readIORef stopRef
-            r <- recvWith' $ (True <$ stop) `orElse` (False <$ (giveUp `orElse` expired))
+            r <- recvWith' $ (True <$ stop) `orElse` (False <$ expired)
             case r of
                 Right bs -> return bs
                 -- Given up on by the caller of 'RecvWith', which sees it.
                 Left True -> return ""
                 Left False -> E.throwIO ConnectionIsTimeout
     recvN <- makeRecvN "" recv'
-    let backendRecvWith = RecvWith $ \n stop -> do
+    let recvWith'' = RecvWith $ \n stop -> do
             given <- newTVarIO Nothing
             writeIORef stopRef $ Just $ stop >>= writeTVar given . Just
             bs <- recvN n `E.finally` writeIORef stopRef Nothing
-            maybe (Right bs) Left <$> readTVarIO given
+            -- Bytes received before giving up are answered, not lost.
+            mg <- readTVarIO given
+            return $ case mg of
+                Just g | BS.null bs -> Left g
+                _ -> Right bs
         backend =
             Backend
                 { backendFlush = return ()
@@ -265,36 +258,26 @@ mkBackend settings wd giveUpVar recvGiveUpVar giveUpAll sock = do
                 , backendSend = send'
                 , backendRecv = recvN
                 }
-    return $ TLSBackend backend backendRecvWith
+    return $ TLSBackend backend recvWith'' sendWith'
 
--- | A 'Backend' whose receive can also be given up on, so that 'bye'
---   waits for the last handshake messages without being interrupted.
-data TLSBackend = TLSBackend Backend RecvWith
+-- | A 'Backend' whose receive and send can also be given up on.
+data TLSBackend = TLSBackend Backend RecvWith SendWith
 
 instance HasBackend TLSBackend where
     initializeBackend _ = return ()
-    getBackend (TLSBackend b _) = b
-    getBackendRecvWith (TLSBackend _ r) = Just r
+    getBackend (TLSBackend b _ _) = b
+    getBackendRecvWith (TLSBackend _ r _) = Just r
+    getBackendSendWith (TLSBackend _ _ s) = Just s
 
--- | close_notify, as a last word: a send which has been given up on is
---   not an error here.  Given up on after a second, through the send's
---   'TVar': handed over to http2, nothing else bounded it.
-byeGivingUp :: TVar (STM ()) -> Context -> IO ()
-byeGivingUp giveUpVar ctx = do
+-- | close_notify, as a last word, given up on after a second: handed over
+--   to http2, nothing else bounded it.
+byeGivingUp :: Context -> IO ()
+byeGivingUp ctx = do
     late <- registerDelay 1000000
-    atomically $ writeTVar giveUpVar $ readTVar late >>= check
     -- close_notify is best effort: a peer gone first is no failure.
-    bye ctx `E.catch` \e -> when (isAsync e) $ E.throwIO e
+    byeWith ctx (readTVar late >>= check) `E.catch` \e -> when (isAsync e) $ E.throwIO e
   where
     isAsync :: E.SomeException -> Bool
     isAsync e = case E.fromException e of
         Just (E.SomeAsyncException _) -> True
         Nothing -> False
-
--- | What a backend gave up with: the 'STM' action's, if it is what gave
---   up, rather than the connection's.
-gaveUp :: STM g -> HTTP2Error -> IO (Either g a)
-gaveUp giveUp ConnectionIsTimeout = do
-    mg <- atomically $ (Just <$> giveUp) `orElse` return Nothing
-    maybe (E.throwIO ConnectionIsTimeout) (return . Left) mg
-gaveUp _ e = E.throwIO e
