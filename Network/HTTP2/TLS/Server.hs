@@ -84,6 +84,7 @@ import Network.Socket (
     HostName,
     PortNumber,
     Socket,
+    close,
     unsafeGracefulClose,
  )
 import Network.TLS hiding (HostName)
@@ -119,7 +120,8 @@ runTLS'
     -> ByteString
     -> (IOBackend -> IO ())
     -> IO ()
-runTLS' h2 settings creds host port alpn action =
+runTLS' h2 settings0 creds host port alpn action = do
+    (settings, stopping) <- goingAway settings0
     runTCPServerWithSettings
         (tcpSettings settings)
         (Just host)
@@ -127,9 +129,12 @@ runTLS' h2 settings creds host port alpn action =
         $ \sock -> supervising settings $ \wd -> do
             giveUpVar <- newTVarIO retry
             recvGiveUpVar <- newTVarIO retry
-            backend <- mkBackend settings wd giveUpVar recvGiveUpVar retry sock
+            (stopHandshake, handshaken) <- handshakeStop stopping
+            backend <- mkBackend settings wd giveUpVar recvGiveUpVar stopHandshake sock
             ctx <- contextNew backend params
-            handshake ctx
+            -- No HTTP/2 yet to close gracefully for: closed at once.
+            handshake ctx `E.onException` close sock
+            handshaken
             iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
             -- The http2 library supervises the connection from here with a
             -- watchdog of its own.
@@ -137,7 +142,7 @@ runTLS' h2 settings creds host port alpn action =
             action iobackend
             byeGivingUp giveUpVar ctx
   where
-    params = getServerParams settings creds alpn
+    params = getServerParams settings0 creds alpn
 
 -- | Running a TLS client.
 --   'IOBackend' provides sending and receiving functions
@@ -161,16 +166,20 @@ runTLSWithSocket'
     -> ByteString
     -> (IOBackend -> IO ())
     -> IO ()
-runTLSWithSocket' h2 settings creds s alpn action =
+runTLSWithSocket' h2 settings0 creds s alpn action = do
+    (settings, stopping) <- goingAway settings0
     runTCPServerWithSocketAndSettings
         (tcpSettings settings)
         s
         $ \sock -> supervising settings $ \wd -> do
             giveUpVar <- newTVarIO retry
             recvGiveUpVar <- newTVarIO retry
-            backend <- mkBackend settings wd giveUpVar recvGiveUpVar retry sock
+            (stopHandshake, handshaken) <- handshakeStop stopping
+            backend <- mkBackend settings wd giveUpVar recvGiveUpVar stopHandshake sock
             ctx <- contextNew backend params
-            handshake ctx
+            -- No HTTP/2 yet to close gracefully for: closed at once.
+            handshake ctx `E.onException` close sock
+            handshaken
             iobackend <- watchedIOBackend wd settings <$> tlsIOBackend giveUpVar recvGiveUpVar ctx sock
             -- The http2 library supervises the connection from here with a
             -- watchdog of its own.
@@ -179,7 +188,7 @@ runTLSWithSocket' h2 settings creds s alpn action =
             byeGivingUp giveUpVar ctx
             return r
   where
-    params = getServerParams settings creds alpn
+    params = getServerParams settings0 creds alpn
 
 -- | Running an HTTP\/2 client over TLS (over TCP).
 --   ALPN is "h2".
@@ -317,6 +326,16 @@ tcpSettings settings =
 --   since http2 waits for its threads.
 byHTTP2 :: Settings -> Settings
 byHTTP2 settings = settings{settingsClose = \s -> unsafeGracefulClose s 5000}
+
+-- | Giving up a handshake once the server is told to stop, and nothing
+--   after it: what the connection does next is its protocol's to end.
+handshakeStop :: STM () -> IO (STM (), IO ())
+handshakeStop stopping = do
+    handshaking <- newTVarIO True
+    return
+        ( (readTVar handshaking >>= check) >> stopping
+        , atomically $ writeTVar handshaking False
+        )
 
 -- | Stopping the server also tells each HTTP\/2 connection to go away:
 --   GOAWAY, and closing once the streams it has taken are done.
