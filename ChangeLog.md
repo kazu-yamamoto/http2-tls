@@ -14,6 +14,8 @@
 * Requires `http2` with `confTimeout` and `time-manager` 0.5.3.
 * Give up a client with a result, and take the STM action last.
   [#32](https://github.com/kazu-yamamoto/http2-tls/pull/32)
+* Give up through tls's handshakeWith, recvDataWith, sendDataWith and byeWith.
+  [#44](https://github.com/kazu-yamamoto/http2-tls/pull/44)
 
 ## 0.5.9
 
