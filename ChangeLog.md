@@ -16,6 +16,8 @@
   [#32](https://github.com/kazu-yamamoto/http2-tls/pull/32)
 * Give up through tls's handshakeWith, recvDataWith, sendDataWith and byeWith.
   [#44](https://github.com/kazu-yamamoto/http2-tls/pull/44)
+* Require tls 2.6.4, now released.
+  [#45](https://github.com/kazu-yamamoto/http2-tls/pull/45)
 
 ## 0.5.9
 
