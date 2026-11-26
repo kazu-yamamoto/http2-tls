@@ -18,6 +18,8 @@
   [#44](https://github.com/kazu-yamamoto/http2-tls/pull/44)
 * Require tls 2.6.4, now released.
   [#45](https://github.com/kazu-yamamoto/http2-tls/pull/45)
+* Require tls 2.7, pinned to hs-tls main.
+  [#46](https://github.com/kazu-yamamoto/http2-tls/pull/46)
 
 ## 0.5.9
 
