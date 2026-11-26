@@ -72,6 +72,7 @@ trailersMaker :: Context SHA1 -> Maybe ByteString -> IO NextTrailersMaker
 trailersMaker ctx Nothing = return $ Trailers [("X-SHA1", sha1)]
   where
     sha1 = C8.pack $ show $ CH.hashFinalize ctx
-trailersMaker ctx (Just bs) = return $ NextTrailersMaker $ trailersMaker ctx'
+-- bs may point into a reused buffer, so hash it now, not lazily.
+trailersMaker ctx (Just bs) = ctx' `seq` return (NextTrailersMaker $ trailersMaker ctx')
   where
     ctx' = CH.hashUpdate ctx bs
