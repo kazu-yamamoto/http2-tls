@@ -24,9 +24,9 @@ source-repository-package
   subdir: time-manager
 
 
--- tls 2.7.0 is not released yet.
+-- tls 2.7.0 and tls-session-manager 0.1.5 are not released yet.
 source-repository-package
   type: git
   location: https://github.com/haskell-tls/hs-tls.git
   tag: f7801eb9a1ef8af26e08773279e1fde2e7497938
-  subdir: tls
+  subdir: tls tls-session-manager
