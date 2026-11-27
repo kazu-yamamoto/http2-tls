@@ -20,6 +20,8 @@
   [#45](https://github.com/kazu-yamamoto/http2-tls/pull/45)
 * Require tls 2.7, pinned to hs-tls main.
   [#46](https://github.com/kazu-yamamoto/http2-tls/pull/46)
+* Hash trailers strictly in h2-server; pin tls-session-manager too
+  [#47](https://github.com/kazu-yamamoto/http2-tls/pull/47)
 
 ## 0.5.9
 
