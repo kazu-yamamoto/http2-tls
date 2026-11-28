@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -10,6 +11,9 @@ import Network.TLS.SessionTicket
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
+#if !defined(mingw32_HOST_OS)
+import System.Posix.Signals (Handler (..), installHandler, sigINT, sigTERM)
+#endif
 
 import Server
 
@@ -69,7 +73,8 @@ main = do
     (host, port) <- case ips of
         [h, p] -> return (h, p)
         _ -> showUsageAndExit usage
-    Right cred@(!_cc, !_priv) <- credentialLoadX509 optCertFile optKeyFile
+    cred@(!_cc, !_priv) <-
+        credentialLoadX509 optCertFile optKeyFile >>= either showUsageAndExit return
     sm <- newSessionTicketManager defaultConfig
     let keylog = case optKeyLogFile of
             Nothing -> settingsKeyLogger defaultSettings
@@ -79,6 +84,19 @@ main = do
                 { settingsKeyLogger = keylog
                 , settingsSessionManager = sm
                 , settingsEarlyDataSize = 4096
+                , settingsInstallShutdownHandler = installShutdownHandler
                 }
         creds = Credentials [cred]
     run settings creds host (read port) server
+
+-- | SIGINT and SIGTERM stop the server: each connection is sent GOAWAY
+-- and closed once its streams are done.
+installShutdownHandler :: IO () -> IO ()
+#if defined(mingw32_HOST_OS)
+installShutdownHandler _ = return ()
+#else
+installShutdownHandler stop = do
+    _ <- installHandler sigINT (Catch stop) Nothing
+    _ <- installHandler sigTERM (Catch stop) Nothing
+    return ()
+#endif
