@@ -70,8 +70,12 @@ executable h2-client
         http-types,
         http2,
         http2-tls,
+        stm,
         tls,
         unix-time
+
+    if !os(windows)
+        build-depends: unix
 
     if flag(devel)
 
@@ -97,6 +101,9 @@ executable h2-server
         http2-tls,
         tls,
         tls-session-manager
+
+    if !os(windows)
+        build-depends: unix
 
     if flag(devel)
 

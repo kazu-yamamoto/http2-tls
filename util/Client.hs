@@ -4,7 +4,6 @@
 
 module Client where
 
-import Control.Concurrent
 import Control.Concurrent.Async
 import qualified Control.Exception as E
 import Control.Monad
@@ -14,6 +13,7 @@ import Data.UnixTime
 import Foreign.C.Types
 import Network.HTTP.Types
 import System.IO
+import System.IO.Error (isEOFError)
 import Text.Printf
 
 import Network.HTTP2.Client
@@ -29,6 +29,7 @@ data Options = Options
     , optValidate :: Bool
     , optResumption :: Bool
     , opt0RTT :: Bool
+    , optTimeout :: Int
     }
     deriving (Show)
 
@@ -45,7 +46,7 @@ client Options{..} paths sendRequest _aux = do
 
 clientNReqs :: Int -> SendRequest -> Path -> IO ()
 clientNReqs n0 sendRequest path = do
-    labelMe "h2 clinet N requests"
+    labelMe "h2 client N requests"
     loop n0
   where
     req = requestNoBody methodGet path []
@@ -59,7 +60,7 @@ clientNReqs n0 sendRequest path = do
 -- Path is dummy
 clientPF :: Int -> SendRequest -> Path -> IO ()
 clientPF n sendRequest _ = do
-    labelMe "h2 clinet performance"
+    labelMe "h2 client performance"
     t1 <- getUnixTime
     sendRequest req loop
     t2 <- getUnixTime
@@ -97,25 +98,25 @@ console _opt paths cli aux = do
     putStrLn "q -- quit"
     putStrLn "g -- get"
     putStrLn "p -- ping"
-    mvar <- newEmptyMVar
-    loop mvar `E.catch` \(E.SomeException _) -> return ()
+    loop
   where
-    loop mvar = do
+    loop = do
         hSetBuffering stdout NoBuffering
         putStr "> "
         hSetBuffering stdout LineBuffering
-        l <- getLine
-        case l of
-            "q" -> putStrLn "bye"
-            "g" -> do
+        -- EOF quits
+        ml <- E.tryJust (guard . isEOFError) getLine
+        case ml of
+            Left () -> putStrLn "bye"
+            Right "q" -> putStrLn "bye"
+            Right "g" -> do
                 mapM_ (\p -> putStrLn $ "GET " ++ C8.unpack p) paths
-                _ <- forkIO $ cli >> putMVar mvar ()
-                takeMVar mvar
-                loop mvar
-            "p" -> do
+                cli
+                loop
+            Right "p" -> do
                 putStrLn "Ping"
                 auxSendPing aux
-                loop mvar
-            _ -> do
+                loop
+            Right _ -> do
                 putStrLn "No such command"
-                loop mvar
+                loop

@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -5,6 +6,7 @@
 module Main where
 
 import Control.Concurrent
+import Control.Concurrent.STM
 import Control.Monad
 import qualified Data.ByteString.Char8 as C8
 import Data.IORef
@@ -13,6 +15,9 @@ import Network.TLS
 import System.Console.GetOpt
 import System.Environment
 import System.Exit
+#if !defined(mingw32_HOST_OS)
+import System.Posix.Signals (Handler (..), installHandler, sigINT)
+#endif
 
 import Network.HTTP2.Client (Path)
 
@@ -30,6 +35,7 @@ defaultOptions =
         , optValidate = False
         , optResumption = False
         , opt0RTT = False
+        , optTimeout = 30
         }
 
 usage :: String
@@ -77,6 +83,11 @@ options =
         ["0rtt"]
         (NoArg (\o -> o{opt0RTT = True}))
         "try sending early data"
+    , Option
+        ['T']
+        ["timeout"]
+        (ReqArg (\n o -> o{optTimeout = read n}) "<seconds>")
+        "give up on each connection after this, except in interactive mode (default 30, none with 0)"
     ]
 
 showUsageAndExit :: String -> IO a
@@ -111,7 +122,29 @@ main = do
                 , settingsKeyLogger = keylog
                 , settingsSessionManager = sessionRef ref
                 }
-    run settings host port $ client' opts paths
+    -- Ctrl-C gives up, closing the connection with GOAWAY.
+    interrupted <- newTVarIO False
+    installInterruptHandler $ atomically $ writeTVar interrupted True
+    let interrupt = readTVar interrupted >>= check
+        go settings' = do
+            limit <-
+                if optInteractive opts
+                    then return retry
+                    else deadline $ optTimeout opts
+            r <-
+                runGivingUp
+                    (defaultClientConfig settings' $ defaultAuthority host)
+                    settings'
+                    host
+                    port
+                    (client' opts paths)
+                    ((interrupt >> return "interrupted") `orElse` (limit >> return "timeout"))
+            case r of
+                Right () -> return ()
+                Left reason -> do
+                    putStrLn $ "Gave up: " ++ reason
+                    exitFailure
+    go settings
     when (optResumption opts || opt0RTT opts) $ do
         mr <- readIORef ref
         case mr of
@@ -126,7 +159,7 @@ main = do
                             , settingsWantSessionResume = mr
                             , settingsUseEarlyData = opt0RTT opts
                             }
-                run settings2 host port $ client opts paths
+                go settings2
 
 sessionRef :: IORef (Maybe (SessionID, SessionData)) -> SessionManager
 sessionRef ref =
@@ -143,3 +176,19 @@ client' opts paths sendRequest _aux
         console opts paths action _aux
         return ()
     | otherwise = client opts paths sendRequest _aux
+
+-- | A give-up which fires once the seconds given have passed; with zero
+-- or less, it never fires.
+deadline :: Int -> IO (STM ())
+deadline n
+    | n <= 0 = return retry
+    | otherwise = do
+        tv <- registerDelay $ min n 2000 * 1000000
+        return $ readTVar tv >>= check
+
+installInterruptHandler :: IO () -> IO ()
+#if defined(mingw32_HOST_OS)
+installInterruptHandler _ = return ()
+#else
+installInterruptHandler action = void $ installHandler sigINT (Catch action) Nothing
+#endif
