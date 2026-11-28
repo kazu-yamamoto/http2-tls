@@ -149,9 +149,11 @@ tlsIOBackend ctx sock = do
     return $
         IOBackend
             { send = sendTLS ctx
-            , sendWith = \bs -> afterCloseNotifyWith . sendDataWith ctx (LBS.fromStrict bs)
+            , sendWith = \bs ->
+                respectingGracefulClose ctx (Right ()) . sendDataWith ctx (LBS.fromStrict bs)
             , sendMany = sendManyTLS ctx
-            , sendManyWith = \bss -> afterCloseNotifyWith . sendDataWith ctx (LBS.fromChunks bss)
+            , sendManyWith = \bss ->
+                respectingGracefulClose ctx (Right ()) . sendDataWith ctx (LBS.fromChunks bss)
             , recv = recvTLS ctx
             , recvWith = recvTLSWith ctx
             , requestSock = sock
@@ -185,23 +187,20 @@ tcpIOBackend Settings{..} wd sock = do
 
 ----------------------------------------------------------------
 
+-- | A send after the peer's close_notify has nowhere to go: dropped,
+--   as the GOAWAY which closes the connection.
 sendTLS :: Context -> ByteString -> IO ()
-sendTLS ctx = afterCloseNotify . sendData ctx . LBS.fromStrict
+sendTLS ctx = respectingGracefulClose ctx () . sendData ctx . LBS.fromStrict
 
 sendManyTLS :: Context -> [ByteString] -> IO ()
-sendManyTLS ctx = afterCloseNotify . sendData ctx . LBS.fromChunks
+sendManyTLS ctx = respectingGracefulClose ctx () . sendData ctx . LBS.fromChunks
 
--- | tls answers the peer's close_notify with its own, so a send after it
---   has nowhere to go: dropped, as the GOAWAY which closes the connection.
+-- | Dropping a send which fails with EOF, even without close_notify.
 afterCloseNotify :: IO () -> IO ()
 afterCloseNotify = E.handle $ \e -> case e of
     PostHandshake Error_EOF -> return ()
     _ -> E.throwIO e
-
-afterCloseNotifyWith :: IO (Either g ()) -> IO (Either g ())
-afterCloseNotifyWith = E.handle $ \e -> case e of
-    PostHandshake Error_EOF -> return $ Right ()
-    _ -> E.throwIO e
+{-# DEPRECATED afterCloseNotify "Use respectingGracefulClose of tls" #-}
 
 -- TLS version of recv (decrypting) without a cache.
 recvTLS :: Context -> IO ByteString
