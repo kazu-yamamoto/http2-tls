@@ -22,6 +22,8 @@
   [#46](https://github.com/kazu-yamamoto/http2-tls/pull/46)
 * Hash trailers strictly in h2-server; pin tls-session-manager too
   [#47](https://github.com/kazu-yamamoto/http2-tls/pull/47)
+* Pin hs-tls 3c317089
+  [#48](https://github.com/kazu-yamamoto/http2-tls/pull/48)
 
 ## 0.5.9
 
