@@ -26,6 +26,8 @@
   [#48](https://github.com/kazu-yamamoto/http2-tls/pull/48)
 * util: stop on signals and give up instead of hanging
   [#49](https://github.com/kazu-yamamoto/http2-tls/pull/49)
+* Drop sends only after close_notify.
+  [#50](https://github.com/kazu-yamamoto/http2-tls/pull/50)
 
 ## 0.5.9
 
