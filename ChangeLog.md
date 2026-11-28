@@ -24,6 +24,8 @@
   [#47](https://github.com/kazu-yamamoto/http2-tls/pull/47)
 * Pin hs-tls 3c317089
   [#48](https://github.com/kazu-yamamoto/http2-tls/pull/48)
+* util: stop on signals and give up instead of hanging
+  [#49](https://github.com/kazu-yamamoto/http2-tls/pull/49)
 
 ## 0.5.9
 
